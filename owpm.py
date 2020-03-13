@@ -86,16 +86,20 @@ class Project:
             lock_path
         )  # add new lockfile to self.lockfile_hash
 
-    def install_packages(self, lock_path: Path):
+    def install_packages(self):
         """Installs packages from lock_path and locks if lockfile is out of date"""
 
         lock_path = Path(f"{self.name}.owpmlock")
         lock_packages = []  # in format [{name, version, hash}] instead of in a class
 
-        if self._compare_lock_hash(lock_path) is False:
-            self.lock_proj()  # locks project if lockfile is out of date
+        if not lock_path.exists() or self._compare_lock_hash(lock_path) is False:
+            self.lock_proj()  # locks project if lockfile is out of date or doesn't exist
 
-        pass  # TODO: loop through and install all
+        conn = sqlite3.connect(str(lock_path))
+        c = conn.cursor()
+
+        for item in c.execute("SELECT * FROM lock").fetchall():
+            print(item)
 
     def _compare_lock_hash(self, lock_path: Path) -> bool:
         """Compares self.lockfile_hash with a newly generated hash from the actual lockfile"""
@@ -175,6 +179,6 @@ if __name__ == "__main__":
     got_proj = project_from_toml(Path("owpm.owpm"))
     new_package = Package(got_proj, "click")
     got_proj.save_proj()
-    got_proj.lock_proj()
+    got_proj.install_packages()
 
     base_group()
