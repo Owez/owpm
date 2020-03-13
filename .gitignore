@@ -6,6 +6,7 @@
 owpm.build/
 *.build/
 owpm.exe
+build/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
