@@ -75,17 +75,11 @@ class Project:
 
         # add to db loop around
         for package in self.packages:
-            made_hash = (
-                package.get_hash()
+            made_hash = package.get_hash(
+                pypi_req(package.name)
             )  # NOTE will not work until [Package.get_hash] works
 
-            if not made_hash:
-                _del_path(lock_path)  # delete db
-
-                raise Exception(
-                    f"No lock hash found for package '{package.name}' with version `{package.version}`!"
-                )
-            elif c.execute(f"SELECT * FROM lock WHERE hash='{made_hash}'").fetchall():
+            if c.execute(f"SELECT * FROM lock WHERE hash='{made_hash}'").fetchall():
                 continue  # hash already in lock, no need to add twice
 
             c.execute(
@@ -160,21 +154,26 @@ class Package:
     def __init__(self, parent_proj: Project, name: str, version: str = "*"):
         self.name = name
         self.version = version
+        self.parent_proj = parent_proj
 
-        parent_proj.packages.append(self)
+        self.parent_proj.packages.append(self)
 
     def __repr__(self):
         return f"<name:'{self.name}', version:'{self.version}'>"
 
-    def get_subpackages(self):
-        """Scans pypi for dependancies and adds them to [Project.package] as a new [Package]"""
+    def get_subpackages(self) -> str:
+        """Scans pypi for dependancies and adds them to [Project.package] as a new [Package] and returns hash of this self"""
 
-        pass # TODO: next up
+        resp = pypi_req(self.name)
 
-    def get_hash(self) -> str:
-        """Gets lock hash"""
+        # TODO: parse sub-packages and add to self.parent_proj.packages
 
-        resp_json = _pypi_req(self.name).json()
+        return self.get_hash(resp)
+
+    def get_hash(self, package_resp: requests.Response) -> str:
+        """Gets lock hash, package_resp is for modularity (use `pypi_req("package")`)"""
+
+        resp_json = package_resp.json()
 
         if self.version == "*":
             return resp_json["urls"][0]["md5_digest"]
@@ -217,7 +216,7 @@ def _del_path(file_path: Path):
         os.remove(file_path)
 
 
-def _pypi_req(package: str) -> requests.Response:
+def pypi_req(package: str) -> requests.Response:
     """Constructs a fully-formed json request to the PyPI API using a given
     package name"""
 
@@ -241,6 +240,8 @@ def base_group():
 def init(name, desc, ver):
     """Creates a new .owpm project file"""
 
+    print("Initializing..")
+
     new_proj = Project(name, desc, ver)
     new_proj.save_proj()
 
@@ -252,6 +253,8 @@ def init(name, desc, ver):
 @click.option("--ver", help="Package version", prompt="Version of package", default="*")
 def add(name, ver):
     """Interactively adds a package to .owpm and saves .owpm"""
+
+    print("Adding package(s)..")
 
     proj = first_project_indir()
     new_pkg = Package(proj, name, ver)
@@ -266,6 +269,8 @@ def add(name, ver):
 def rem(name):
     """Removes a given package, this is interactive and may have dupe packages
     with differing versions"""
+
+    print("Removing package(s)..")
 
     proj = first_project_indir()
     found = []
@@ -294,6 +299,8 @@ def rem(name):
 @click.command()
 def lock():
     """Locks the first found .owpm file"""
+
+    print("Locking project..")
 
     proj = first_project_indir()
     proj.lock_proj()
