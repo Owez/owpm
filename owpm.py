@@ -179,6 +179,14 @@ def project_from_toml(owpm_path: Path) -> Project:
     return project
 
 
+def first_project_indir() -> Project:
+    """Finds first .owpm file in running directory and returns [Project]"""
+
+    for file in os.listdir("."):
+        if file.endswith(".owpm"):
+            return project_from_toml(Path(file))
+
+
 def _del_path(file_path: Path):
     """Deletes given file path if it exists"""
 
@@ -188,15 +196,69 @@ def _del_path(file_path: Path):
 
 @click.group()
 def base_group():
-    """The owpm CLI"""
-
     pass
 
 
-if __name__ == "__main__":
-    got_proj = project_from_toml(Path("owpm.owpm"))
-    new_package = Package(got_proj, "click")
-    got_proj.save_proj()
-    got_proj.install_packages()
+@click.command()
+@click.option("--name", help="Name of project", prompt="Name of your project")
+@click.option("--desc", help="Breif description", prompt="Breif description/overview")
+@click.option("--ver", help="Base version of project (default 0.1.0)", default="0.1.0")
+def init(name, desc, ver):
+    """Creates a new .owpm project file"""
 
+    new_proj = Project(name, desc, ver)
+    new_proj.save_proj()
+
+    print(f"Saved project as '{name}.owpm'!")
+
+
+@click.command()
+@click.option("--name", help="Package name", prompt="Name of package to add")
+@click.option("--ver", help="Package version", prompt="Version of package", default="*")
+def add(name, ver):
+    """Interactively adds a package to .owpm and saves .owpm"""
+
+    proj = first_project_indir()
+    new_pkg = Package(proj, name, ver)
+
+    proj.save_proj()
+
+    print(f"Added '{new_pkg.name}':{new_pkg.version} to '{proj}.owpm'!")
+
+
+@click.command()
+@click.option("--name", help="Name of package to remove", prompt="Package name")
+def rem(name):
+    """Removes a given package, this is interactive and may have dupe packages
+    with differing versions"""
+
+    proj = first_project_indir()
+    found = []
+
+    for package in proj.packages:  # NOTE: quick n' dirty linear, fix if you want
+        if package.name == name:
+            found.append(package)
+
+    if not found:
+        print("No packages found!")
+    elif len(found) > 1:
+        for ind, found_package in enumerate(found):
+            print(f"({ind}): '{found_package.name}':{found_package.version}")
+
+        picked_pkg = found[int(input(f"Pick between 0 and {len(found) - 1}: "))]
+    else:
+        picked_pkg = found[0]
+
+    proj.remove_packages([picked_pkg])
+
+    print(
+        f"Removed '{picked_pkg.name}':{picked_pkg.version} from .owpm, lockfile and active venv!"
+    )
+
+
+base_group.add_command(init)  # TODO test
+base_group.add_command(add)  # TODO test
+base_group.add_command(rem)  # TODO test
+
+if __name__ == "__main__":
     base_group()
