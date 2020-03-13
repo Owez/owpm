@@ -1,0 +1,7 @@
+desc = "no desc bro"
+version = "0.1.0"
+lockfile_hash = ""
+
+[packages.x]
+name = "mypkg"
+version = "*"
