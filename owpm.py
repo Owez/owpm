@@ -4,8 +4,21 @@ import click
 import hashlib
 import sqlite3
 import os
+import requests
 
 BUF_SIZE = 65536  # lockfile_hash buffer size
+
+
+class ExceptionApiDown(Exception):
+    """When a seemingly correct API request to a package repo does not return status 200"""
+
+    pass
+
+
+class ExceptionVersionError(Exception):
+    """When a user gives a version of a package that is not avalible"""
+
+    pass
 
 
 class Project:
@@ -161,7 +174,17 @@ class Package:
     def get_hash(self) -> str:
         """Gets lock hash"""
 
-        pass
+        resp_json = _pypi_req(self.name).json()
+
+        if self.version == "*":
+            return resp_json["urls"][0]["md5_digest"]
+
+        try:
+            return resp_json["releases"][self.version][0]["md5_digest"]
+        except:
+            raise ExceptionVersionError(
+                f"Version {self.version} defined for package '{self.name}' is not avalible!"
+            )
 
 
 def project_from_toml(owpm_path: Path) -> Project:
@@ -192,6 +215,18 @@ def _del_path(file_path: Path):
 
     if file_path.exists():
         os.remove(file_path)
+
+
+def _pypi_req(package: str) -> requests.Response:
+    """Constructs a fully-formed json request to the PyPI API using a given
+    package name"""
+
+    resp = requests.get(f"https://pypi.org/pypi/{package}/json")
+
+    if resp.status_code != 200:
+        raise ExceptionApiDown("A seemingly valid API request to PyPI has failed!")
+
+    return resp
 
 
 @click.group()
@@ -256,9 +291,20 @@ def rem(name):
     )
 
 
+@click.command()
+def lock():
+    """Locks the first found .owpm file"""
+
+    proj = first_project_indir()
+    proj.lock_proj()
+
+    print(f"Locked project as '{proj.name}.owpmlock'!")
+
+
 base_group.add_command(init)  # TODO test
 base_group.add_command(add)  # TODO test
 base_group.add_command(rem)  # TODO test
+base_group.add_command(lock)  # TODO test
 
 if __name__ == "__main__":
     base_group()
