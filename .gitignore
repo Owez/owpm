@@ -5,6 +5,7 @@
 # Nuitka
 owpm.build/
 *.build/
+owpm.exe
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
