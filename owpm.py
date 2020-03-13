@@ -169,7 +169,7 @@ class Package:
     def get_subpackages(self):
         """Scans pypi for dependancies and adds them to [Project.package] as a new [Package]"""
 
-        pass
+        pass # TODO: next up
 
     def get_hash(self) -> str:
         """Gets lock hash"""
@@ -301,10 +301,10 @@ def lock():
     print(f"Locked project as '{proj.name}.owpmlock'!")
 
 
-base_group.add_command(init)  # TODO test
+base_group.add_command(init)
 base_group.add_command(add)  # TODO test
 base_group.add_command(rem)  # TODO test
-base_group.add_command(lock)  # TODO test
+base_group.add_command(lock)
 
 if __name__ == "__main__":
     base_group()
