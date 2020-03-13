@@ -223,7 +223,7 @@ def add(name, ver):
 
     proj.save_proj()
 
-    print(f"Added '{new_pkg.name}':{new_pkg.version} to '{proj}.owpm'!")
+    print(f"Added '{new_pkg.name}':{new_pkg.version} to '{proj.name}.owpm'!")
 
 
 @click.command()
