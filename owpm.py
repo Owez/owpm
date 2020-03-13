@@ -2,6 +2,8 @@ from pathlib import Path
 import toml
 import click
 import hashlib
+import sqlite3
+import os
 
 BUF_SIZE = 65536  # lockfile_hash buffer size
 
@@ -22,51 +24,72 @@ class Project:
         self.lockfile_hash = lockfile_hash
         self.packages = []
 
-    def init_proj(self, save_path: Path):
+    def __repr__(self):
+        return f"<name:'{self.name}', desc:'{self.desc}', version:{self.version}, packages:{len(self.packages)}>"
+
+    def save_proj(self):
         """Creates a human-readable and editable save file"""
+
+        save_path = Path(f"{self.name}.owpm")
 
         payload = {
             "desc": self.desc,
             "version": self.version,
             "lockfile_hash": self.lockfile_hash,
-            packages: [],
+            "packages": {},
         }
 
         for package in self.packages:
-            payload["packages"].append(package.save_representation())
+            payload["packages"][package.name] = package.version
 
-        with open(save_path, "w") as file:
+        with open(save_path, "w+") as file:
             toml.dump(payload, file)
 
-    def lock_proj(self, lock_path: Path):
+    def lock_proj(self):
         """Locks all packages and package deps then saves to .owpmlock path"""
 
-        # TODO: make all of this a sqlite3 db and have it add hashed new lockfile to self.lockfile_hash at end
+        lock_path = Path(f"{self.name}.owpmlock")
+        _del_path(lock_path)  # delete db
+
+        conn = sqlite3.connect(str(lock_path))
+        c = conn.cursor()
+
+        c.execute("CREATE TABLE lock ( name text, version text, hash text )")
 
         # adds all deps of package
-        for package in self.packages.copy():
+        for package in self.packages:
             package.get_subpackages()
+
+        # add to db loop around
+        for package in self.packages:
+            made_hash = (
+                package.get_hash()
+            )  # NOTE will not work until [Package.get_hash] works
+
+            if not made_hash:
+                _del_path(lock_path)  # delete db
+
+                raise Exception(
+                    f"No lock hash found for package '{package.name}' with version `{package.version}`!"
+                )
+            elif c.execute(f"SELECT * FROM lock WHERE hash='{made_hash}'").fetchall():
+                continue  # hash already in lock, no need to add twice
+
+            c.execute(
+                f"INSERT INTO lock VALUES ( '{package.name}', '{package.version}', '{made_hash}' )"
+            )
+
+        conn.commit()
+        conn.close()
 
         self.lockfile_hash = self._hash_lockfile(
             lock_path
-        )  # NOTE: put this at end when finished updates
-
-        pass
-
-        # payload = {
-        #     lock_packages: [],
-        # }
-
-        # # now locks all fully-added packages
-        # for package in self.packages:
-        #     payload["packages"].append(package.lock()) # NOTE: with sqlite3 prep, .lock() now just returns hash
-
-        # with open(save_path, "r") as file:
-        #     toml.dump(payload, file)
+        )  # add new lockfile to self.lockfile_hash
 
     def install_packages(self, lock_path: Path):
         """Installs packages from lock_path and locks if lockfile is out of date"""
 
+        lock_path = Path(f"{self.name}.owpmlock")
         lock_packages = []  # in format [{name, version, hash}] instead of in a class
 
         if self._compare_lock_hash(lock_path) is False:
@@ -105,23 +128,18 @@ class Package:
 
         parent_proj.packages.append(self)
 
+    def __repr__(self):
+        return f"<name:'{self.name}', version:'{self.version}'>"
+
     def get_subpackages(self):
         """Scans pypi for dependancies and adds them to [Project.package] as a new [Package]"""
 
         pass
 
-    def lock(self) -> str:
+    def get_hash(self) -> str:
         """Gets lock hash"""
 
         pass
-
-    def save_representation(self) -> dict:
-        """User-friendly toml representation of package as dict"""
-
-        return {
-            "name": self.name,
-            "version": self.version,
-        }
 
 
 def project_from_toml(owpm_path: Path) -> Project:
@@ -134,14 +152,16 @@ def project_from_toml(owpm_path: Path) -> Project:
     )
 
     for package in payload["packages"]:
-        new_package = Package(
-            project,
-            payload["packages"][package]["name"],
-            payload["packages"][package]["version"],
-        )
-        project.packages.append(new_package)
+        new_package = Package(project, package, payload["packages"][package])
 
     return project
+
+
+def _del_path(file_path: Path):
+    """Deletes given file path if it exists"""
+
+    if file_path.exists():
+        os.remove(file_path)
 
 
 @click.group()
@@ -152,5 +172,9 @@ def base_group():
 
 
 if __name__ == "__main__":
-    project_from_toml(Path("owpm.toml"))
+    got_proj = project_from_toml(Path("owpm.owpm"))
+    new_package = Package(got_proj, "click")
+    got_proj.save_proj()
+    got_proj.lock_proj()
+
     base_group()

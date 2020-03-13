@@ -1,0 +1,7 @@
+desc = "Simple python package manager"
+version = "0.1.0"
+lockfile_hash = ""
+
+[packages]
+click = "*"
+requests = "*"
