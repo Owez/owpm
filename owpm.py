@@ -87,7 +87,7 @@ class Project:
         )  # add new lockfile to self.lockfile_hash
 
     def install_packages(self):
-        """Installs packages from lock_path and locks if lockfile is out of date"""
+        """Installs packages from lock_path, locks if lockfile is out of date and adds to active venv"""
 
         lock_path = Path(f"{self.name}.owpmlock")
         lock_packages = []  # in format [{name, version, hash}] instead of in a class
@@ -100,6 +100,24 @@ class Project:
 
         for item in c.execute("SELECT * FROM lock").fetchall():
             print(item)
+
+        # TODO: install to active venv
+
+    def remove_packages(self, to_remove: list):
+        """Removes a list of [Package] from .owpm, lockfile and current active venv"""
+
+        for package in to_remove:
+            if type(package) != Package:
+                raise Exception(
+                    f"Trying to remove '{package}' from db which is not a [Package]!"
+                )
+
+            self.packages.remove(to_remove)
+
+        self.save_proj()
+        self.lock_proj()
+
+        # TODO: remove from active venv
 
     def _compare_lock_hash(self, lock_path: Path) -> bool:
         """Compares self.lockfile_hash with a newly generated hash from the actual lockfile"""
