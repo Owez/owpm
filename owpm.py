@@ -165,8 +165,13 @@ class Package:
         """Scans pypi for dependancies and adds them to [Project.package] as a new [Package] and returns hash of this self"""
 
         resp = pypi_req(self.name)
+        resp_json = resp.json()
 
-        # TODO: parse sub-packages and add to self.parent_proj.packages
+        required = resp_json["info"]["requires_dist"]
+
+        if required:  # API gives NoneType sometimes
+            for subpackage in required:
+                print(subpackage)  # TODO: parse
 
         return self.get_hash(resp)
 
