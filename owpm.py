@@ -200,6 +200,9 @@ class Package:
             f"INSERT INTO lock VALUES ( '{self.name}', '{self.version}', '{made_hash}' )"
         )
 
+        conn.commit()
+        conn.close()
+
 
 def project_from_toml(owpm_path: Path) -> Project:
     """Gets a [Project] from a given TOML path"""
