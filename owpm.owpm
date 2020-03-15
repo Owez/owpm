@@ -1,6 +1,6 @@
 desc = "Simple python package manager"
 version = "0.1.0"
-lockfile_hash = "346b86d170cf19bbf00ba681ab992d25"
+lockfile_hash = "0b8cb78c1b8a414a526315e7bdd38550"
 
 [packages]
 click = "*"

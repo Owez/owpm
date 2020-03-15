@@ -187,6 +187,8 @@ class Package:
         """Scans pypi for dependancies and adds them to [Project.package] as a
         new [Package] and returns hash of this self"""
 
+        print(f"\tPulling deps for {self}..")
+
         resp = pypi_req(self.name)
         resp_json = resp.json()
 
