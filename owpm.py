@@ -1,12 +1,16 @@
-from pathlib import Path
-import toml
-import click
 import hashlib
-import sqlite3
 import os
-import requests
+import random
+import sqlite3
+import sys
 import threading
 import time
+from pathlib import Path
+
+import click
+import requests
+import toml
+import virtualenv
 
 BUF_SIZE = 65536  # lockfile_hash buffer size
 
@@ -247,6 +251,40 @@ class Package:
         conn.close()
 
 
+class OwpmVenv:  # TODO: add to Project and autodetect active with something in owpm.owpmlock
+    """A built virtual enviroment created from a valid [Project]"""
+
+    def __init__(self):
+        self.pin = self._get_pin()
+        self.path = self._get_path()  # NOTE: could make faster
+
+    def __repr__(self):
+        return f"venv-{self.pin}"
+
+    def create_venv(self):
+        """Creates venv"""
+
+        print("Creating venv..")
+
+        virtualenv.create_enviroment(self.path, site_packages=False)
+
+        print(f"Created new virtual env {self}!")
+
+    def _get_path(self, pin: int) -> str:
+        """Makes a venv path from a specified PIN"""
+
+        return f"{os.path.dirname(os.path.abspath(sys.argv[0]))}/owpm/owpm_venv/{pin}"
+
+    def _get_pin(self) -> int:
+        """Randomly generates an unused PIN for a new venv"""
+
+        for attempt in range(45):
+            venv_pin = str(random.randint(0, 999))
+
+            if not os.path.exists(self._get_path(venv_pin)):
+                return venv_pin
+
+
 def project_from_toml(owpm_path: Path) -> Project:
     """Gets a [Project] from a given TOML path"""
 
@@ -345,7 +383,7 @@ def add(names):
 @click.command()
 @click.argument("names", nargs=-1)
 def rem(names):
-    """Removes a given package, this is interactive and may have dupe packages
+    """Removes provided package(s). this is interactive and may have dupe packages
     with differing versions"""
 
     print("Removing package(s)..")
@@ -394,10 +432,29 @@ def lock(force):
         print(f"Locked project as '{proj.name}.owpmlock'!")
 
 
+@click.command()
+def shell():
+    """Starts an interactive venv shell. Will lock if not already and create a
+    venv if one is not made"""
+
+    proj = first_project_indir()
+
+
+@click.command()
+@click.argument("args", nargs=-1)
+def run(args):
+    """Runs provided commands inside of a temporary venv shell. Will lock if not
+    already and create a venv if one is not made"""
+
+    proj = first_project_indir()
+
+
 base_group.add_command(init)
 base_group.add_command(add)
-base_group.add_command(rem)  # TODO fix
+base_group.add_command(rem)  # TODO: fix
 base_group.add_command(lock)
+base_group.add_command(shell)  # TODO: test
+base_group.add_command(run)  # TODO: test
 
 if __name__ == "__main__":
     base_group()
