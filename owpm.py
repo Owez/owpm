@@ -5,6 +5,7 @@ import hashlib
 import sqlite3
 import os
 import requests
+import threading
 
 BUF_SIZE = 65536  # lockfile_hash buffer size
 
@@ -64,10 +65,12 @@ class Project:
         lock_path = Path(f"{self.name}.owpmlock")
         _del_path(lock_path)  # delete db
 
-        conn = sqlite3.connect(str(lock_path))
-        c = conn.cursor()
+        conn, c = _new_lockfile_connection(lock_path)
 
         c.execute("CREATE TABLE lock ( name text, version text, hash text )")
+
+        conn.commit()
+        conn.close()
 
         # adds all deps of package
         for package in self.packages:
@@ -75,19 +78,10 @@ class Project:
 
         # add to db loop around
         for package in self.packages:
-            made_hash = package.get_hash(
-                pypi_req(package.name)
-            )  # NOTE will not work until [Package.get_hash] works
-
-            if c.execute(f"SELECT * FROM lock WHERE hash='{made_hash}'").fetchall():
-                continue  # hash already in lock, no need to add twice
-
-            c.execute(
-                f"INSERT INTO lock VALUES ( '{package.name}', '{package.version}', '{made_hash}' )"
+            lock_thread = threading.Thread(
+                target=package._nthread_lock_package, args=(lock_path,)
             )
-
-        conn.commit()
-        conn.close()
+            lock_thread.start()
 
         self.lockfile_hash = self._hash_lockfile(
             lock_path
@@ -190,6 +184,22 @@ class Package:
                 f"Version {self.version} defined for package '{self.name}' is not avalible!"
             )
 
+    def _nthread_lock_package(self, lock_path: Path):
+        """Designed for a multi-threaded locking system to add a single package"""
+
+        conn, c = _new_lockfile_connection(lock_path)
+
+        made_hash = self.get_hash(
+            pypi_req(self.name)
+        )  # NOTE will not work until [Package.get_hash] works
+
+        if c.execute(f"SELECT * FROM lock WHERE hash='{made_hash}'").fetchall():
+            return  # hash already in lock, no need to add twice
+
+        c.execute(
+            f"INSERT INTO lock VALUES ( '{self.name}', '{self.version}', '{made_hash}' )"
+        )
+
 
 def project_from_toml(owpm_path: Path) -> Project:
     """Gets a [Project] from a given TOML path"""
@@ -219,6 +229,15 @@ def _del_path(file_path: Path):
 
     if file_path.exists():
         os.remove(file_path)
+
+
+def _new_lockfile_connection(lock_path: Path) -> tuple:
+    """Creates a new sqlite connection to a given lockfile"""
+
+    conn = sqlite3.connect(str(lock_path))
+    c = conn.cursor()
+
+    return (conn, c)
 
 
 def pypi_req(package: str) -> requests.Response:
