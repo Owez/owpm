@@ -10,7 +10,7 @@ from pathlib import Path
 import click
 import requests
 import toml
-import virtualenv
+from venv import EnvBuilder
 
 BUF_SIZE = 65536  # lockfile_hash buffer size
 
@@ -52,12 +52,8 @@ class OwpmVenv:
     def create_venv(self):
         """Creates venv"""
 
-        print("Creating venv..")
-
-        virtualenv.create_enviroment(self.path, site_packages=False)
+        # virtualenv.create_enviroment(self.path, site_packages=False)
         self.is_active = True
-
-        print(f"Created new virtual env {self}!")
 
     def _get_path(self, pin: int) -> str:
         """Makes a venv path from a specified PIN"""
@@ -116,8 +112,6 @@ class Project:
         `force` always locks, even if owpm thinks the packages are already locked.
         Will return a False if it needed to lock or True if smart-locked"""
 
-        print("Locking project..")
-
         lock_path = Path(f"{self.name}.owpmlock")
 
         if not force and lock_path.exists() and self._compare_lock_hash(lock_path):
@@ -128,7 +122,6 @@ class Project:
         conn, c = _new_lockfile_connection(lock_path)
 
         c.execute("CREATE TABLE lock ( name text, version text, hash text )")
-        c.execute("CREATE TABLE venv ( pin int, hash text )")
 
         conn.commit()
         conn.close()
@@ -152,21 +145,16 @@ class Project:
 
     def build_proj(self) -> OwpmVenv:
         """Installs packages from lock_path, locks if lockfile is out of date and
-        adds to a new venv, which is then returned"""
+        adds to a new venv, which is then returned for user to remember"""
 
         lock_path = Path(f"{self.name}.owpmlock")
 
         self.lock_proj()  # ensure project is locked
 
-        conn, c = _new_lockfile_connection(lock_path)
-
         venv = OwpmVenv()
         venv.create_venv()
 
-        c.execute(f"INSERT INTO venv VALUES ( {venv.pin}, '{self.lockfile_hash}' )")
-        # TODO with new venv install packages into
-
-        conn.close()
+        # TODO: add stuff to venv
 
         return venv
 
@@ -217,21 +205,6 @@ class Project:
         payload = toml.load(open(save_path, "r"))
         payload["lockfile_hash"] = self.lockfile_hash
         toml.dump(payload, open(save_path, "w+"))
-
-    def get_venv_pins(self) -> list:
-        """Returns a list of [OwpmVenv] that are currently active"""
-
-        self.lock_proj()  # ensure project is locked
-
-        lock_path = Path(f"{self.name}.owpmlock")
-
-        conn, c = _new_lockfile_connection(lock_path)
-
-        found_pins = c.execute(
-            f"SELECT pin FROM venv WHERE hash='{self.lockfile_hash}'"
-        ).fetchall()  # only get from matching hash
-
-        return found_pins
 
 
 class Package:
@@ -368,29 +341,6 @@ def pypi_req(package: str) -> requests.Response:
     return resp
 
 
-def _get_active_venv(proj: Project) -> OwpmVenv:
-    """Interactive picker for getting virtualenv for `shell` and `run` commands"""
-
-    found_pins = proj.get_venv_pins()
-
-    print("start")
-
-    if len(found_pins) == 0:
-        print("Active venv not found, creating new..")
-        venv = proj.build_proj()
-
-        # TODO: use venv.path to run venv
-    elif len(found_pins) == 1:
-        venv = OwpmVenv(found_pins[0])  # use first venv found
-
-        # TODO: use venv.path to run venv
-    else:
-        # TODO: select intended venv and use venv.path to run venv
-        pass
-
-    return venv
-
-
 @click.group()
 def base_group():
     pass
@@ -477,24 +427,26 @@ def lock(force):
 
 
 @click.command()
-def shell():
+@click.option("--pin", "-p", help="Virtual enviroment PIN", required=True)
+def shell(pin):
     """Starts an interactive venv shell. Will lock if not already and create a
     venv if one is not made"""
 
     proj = first_project_indir()
-    venv = _get_active_venv(proj)
+    venv = OwpmVenv(pin)
 
     print("Coming soon..", venv)
 
 
 @click.command()
+@click.option("--pin", "-p", help="Virtual enviroment PIN", required=True)
 @click.argument("args", nargs=-1)
-def run(args):
+def run(pin, args):
     """Runs provided commands inside of a temporary venv shell. Will lock if not
     already and create a venv if one is not made"""
 
     proj = first_project_indir()
-    venv = _get_active_venv(proj)
+    venv = OwpmVenv(pin)
 
     print("Coming soon..")
 
@@ -518,6 +470,7 @@ base_group.add_command(rem)  # TODO: fix
 base_group.add_command(lock)
 base_group.add_command(shell)  # TODO: test
 base_group.add_command(run)  # TODO: test
+base_group.add_command(build)  # TODO: test
 
 if __name__ == "__main__":
     base_group()
