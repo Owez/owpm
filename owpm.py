@@ -393,8 +393,8 @@ def lock(force):
 
 
 base_group.add_command(init)
-base_group.add_command(add)  # TODO test
-base_group.add_command(rem)  # TODO test
+base_group.add_command(add)
+base_group.add_command(rem)  # TODO fix
 base_group.add_command(lock)
 
 if __name__ == "__main__":
