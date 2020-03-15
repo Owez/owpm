@@ -33,6 +33,47 @@ class ExceptionOwpmNotFound(Exception):
     pass
 
 
+class OwpmVenv:
+    """A built virtual enviroment created from a valid [Project]. If no venv_pin
+    is given, it will generate a new one automatically"""
+
+    def __init__(self, venv_pin: int = None):
+        if venv_pin is None:
+            self.pin = self._get_pin()
+        else:
+            self.pin = venv_pin
+
+        self.path = self._get_path(self.pin)  # NOTE: could make faster
+        self.is_active = False  # turns to True when activated
+
+    def __repr__(self):
+        return f"venv-{self.pin}"
+
+    def create_venv(self):
+        """Creates venv"""
+
+        print("Creating venv..")
+
+        virtualenv.create_enviroment(self.path, site_packages=False)
+        self.is_active = True
+
+        print(f"Created new virtual env {self}!")
+
+    def _get_path(self, pin: int) -> str:
+        """Makes a venv path from a specified PIN"""
+
+        return f"{os.path.dirname(os.path.abspath(sys.argv[0]))}/owpm/owpm_venv/{pin}"
+
+    def _get_pin(self) -> int:
+        """Randomly generates an unused PIN for a new venv"""
+
+        for attempt in range(45):
+            venv_pin = str(random.randint(0, 999))
+
+            if not os.path.exists(self._get_path(venv_pin)):
+                return venv_pin
+
+
 class Project:
     """The overall project file. Name is the save name and lockfile_hash is for stopping mutliple locks on add -> install"""
 
@@ -85,6 +126,7 @@ class Project:
         conn, c = _new_lockfile_connection(lock_path)
 
         c.execute("CREATE TABLE lock ( name text, version text, hash text )")
+        c.execute("CREATE TABLE venv ( pin int, hash text )")
 
         conn.commit()
         conn.close()
@@ -106,8 +148,9 @@ class Project:
 
         return False
 
-    def install_packages(self):
-        """Installs packages from lock_path, locks if lockfile is out of date and adds to active venv"""
+    def build_proj(self) -> OwpmVenv:
+        """Installs packages from lock_path, locks if lockfile is out of date and
+        adds to a new venv, which is then returned"""
 
         lock_path = Path(f"{self.name}.owpmlock")
         lock_packages = []  # in format [{name, version, hash}] instead of in a class
@@ -115,17 +158,19 @@ class Project:
         if not lock_path.exists() or self._compare_lock_hash(lock_path) is False:
             self.lock_proj()  # locks project if lockfile is out of date or doesn't exist
 
-        conn = sqlite3.connect(str(lock_path))
-        c = conn.cursor()
+        conn, c = _new_lockfile_connection(lock_path)
 
-        for item in c.execute("SELECT * FROM lock").fetchall():
-            print(item)
+        venv = OwpmVenv()
+        venv.create_venv()
+
+        c.execute(f"INSERT INTO venv VALUES ( {venv.pin}, '{self.lockfile_hash}' )")
+        # TODO with new venv install packages into
 
         conn.close()
 
-        # TODO: install to active venv
+        return venv
 
-    def remove_packages(self, to_remove: list):
+    def remove_packages(self, to_remove: list, venv_pin: int):
         """Removes a list of [Package] from .owpm, lockfile and current active venv"""
 
         for package in to_remove:
@@ -137,7 +182,7 @@ class Project:
             self.packages.remove(to_remove)
 
         self.save_proj()
-        self.lock_proj()
+        self.lock_proj()  # TODO delete from lock db manually?
 
         # TODO: remove from active venv
 
@@ -172,6 +217,19 @@ class Project:
         payload = toml.load(open(save_path, "r"))
         payload["lockfile_hash"] = self.lockfile_hash
         toml.dump(payload, open(save_path, "w+"))
+
+    def get_venv_pins(self) -> list:
+        """Returns a list of [OwpmVenv] that are currently active"""
+
+        lock_path = Path(f"{self.name}.owpmlock")
+
+        conn, c = _new_lockfile_connection(lock_path)
+
+        found_pins = c.execute(
+            f"SELECT pin FROM venv WHERE hash='{self.lockfile_hash}'"
+        ).fetchall()  # only get from matching hash # TODO: fix
+
+        print(found_pins, type(found_pins))
 
 
 class Package:
@@ -251,40 +309,6 @@ class Package:
         conn.close()
 
 
-class OwpmVenv:  # TODO: add to Project and autodetect active with something in owpm.owpmlock
-    """A built virtual enviroment created from a valid [Project]"""
-
-    def __init__(self):
-        self.pin = self._get_pin()
-        self.path = self._get_path()  # NOTE: could make faster
-
-    def __repr__(self):
-        return f"venv-{self.pin}"
-
-    def create_venv(self):
-        """Creates venv"""
-
-        print("Creating venv..")
-
-        virtualenv.create_enviroment(self.path, site_packages=False)
-
-        print(f"Created new virtual env {self}!")
-
-    def _get_path(self, pin: int) -> str:
-        """Makes a venv path from a specified PIN"""
-
-        return f"{os.path.dirname(os.path.abspath(sys.argv[0]))}/owpm/owpm_venv/{pin}"
-
-    def _get_pin(self) -> int:
-        """Randomly generates an unused PIN for a new venv"""
-
-        for attempt in range(45):
-            venv_pin = str(random.randint(0, 999))
-
-            if not os.path.exists(self._get_path(venv_pin)):
-                return venv_pin
-
-
 def project_from_toml(owpm_path: Path) -> Project:
     """Gets a [Project] from a given TOML path"""
 
@@ -340,6 +364,24 @@ def pypi_req(package: str) -> requests.Response:
         raise ExceptionApiDown("A seemingly valid API request to PyPI has failed!")
 
     return resp
+
+
+def _get_active_venv(proj: Project) -> OwpmVenv:
+    """Interactive picker for getting virtualenv for `shell` and `run` commands"""
+
+    found_pins = proj.get_venv_pins()
+
+    if len(found_pins) == 0:
+        venv = OwpmVenv()  # random pin generation
+
+        # TODO use venv.path to run venv
+    elif len(found_pins) == 1:
+        venv = OwpmVenv(found_pins[0])  # use first venv found
+
+        # TODO use venv.path to run venv
+    else:
+        print("Active venv not found, creating new..")
+        proj.build_proj()
 
 
 @click.group()
@@ -438,6 +480,9 @@ def shell():
     venv if one is not made"""
 
     proj = first_project_indir()
+    venv = _get_active_venv(proj)
+
+    print("Coming soon..")
 
 
 @click.command()
@@ -447,6 +492,22 @@ def run(args):
     already and create a venv if one is not made"""
 
     proj = first_project_indir()
+    venv = _get_active_venv(proj)
+
+    print("Coming soon..")
+
+
+@click.command()
+def build():
+    """Constructs a new venv and provides the PIN"""
+
+    proj = first_project_indir()
+
+    print("Constructing new venv..")
+
+    venv = proj.build_proj()
+
+    print(f"Created {venv}!")
 
 
 base_group.add_command(init)
