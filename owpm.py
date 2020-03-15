@@ -23,6 +23,12 @@ class ExceptionVersionError(Exception):
     pass
 
 
+class ExceptionOwpmNotFound(Exception):
+    """When a detection function cannot find a .owpm file"""
+
+    pass
+
+
 class Project:
     """The overall project file. Name is the save name and lockfile_hash is for stopping mutliple locks on add -> install"""
 
@@ -80,7 +86,7 @@ class Project:
         conn.close()
 
         # adds all deps of package
-        for package in self.packages:
+        for package in self.packages.copy():
             package.get_subpackages()
 
         # add to db loop around
@@ -92,10 +98,7 @@ class Project:
 
         time.sleep(0.5)  # race condition, wait for threading and filesystem to catch up
 
-        self.lockfile_hash = self._hash_lockfile(
-            lock_path
-        )  # add new lockfile to self.lockfile_hash
-        self.save_proj()  # commit lockfile_hash to x.owpm
+        self._update_lockfile_hash(lock_path)  # add new lockfile to x.owpm
 
         return False
 
@@ -113,6 +116,8 @@ class Project:
 
         for item in c.execute("SELECT * FROM lock").fetchall():
             print(item)
+
+        conn.close()
 
         # TODO: install to active venv
 
@@ -135,9 +140,7 @@ class Project:
     def _compare_lock_hash(self, lock_path: Path) -> bool:
         """Compares self.lockfile_hash with a newly generated hash from the actual lockfile"""
 
-        return (
-            self._hash_lockfile(lock_path) == self.lockfile_hash
-        )  # TODO: find reason this doesn't work
+        return self._hash_lockfile(lock_path) == self.lockfile_hash
 
     def _hash_lockfile(self, lock_path: Path) -> str:
         """Hashes a lockfile to use in comparisons or at end of locking"""
@@ -155,6 +158,17 @@ class Project:
 
         return md5.hexdigest()
 
+    def _update_lockfile_hash(self, lock_path: Path):
+        """Updates lockfile hash and saves it to a .owpm file (doesn't save all in self.packages)"""
+
+        save_path = Path(f"{self.name}.owpm")
+
+        self.lockfile_hash = self._hash_lockfile(lock_path)
+
+        payload = toml.load(open(save_path, "r"))
+        payload["lockfile_hash"] = self.lockfile_hash
+        toml.dump(payload, open(save_path, "w+"))
+
 
 class Package:
     """A single package when using owpm. `save_hash` is generated automatically after locking once"""
@@ -167,10 +181,11 @@ class Package:
         self.parent_proj.packages.append(self)
 
     def __repr__(self):
-        return f"<name:'{self.name}', version:'{self.version}'>"
+        return f"'{self.name}':{self.version}"
 
     def get_subpackages(self) -> str:
-        """Scans pypi for dependancies and adds them to [Project.package] as a new [Package] and returns hash of this self"""
+        """Scans pypi for dependancies and adds them to [Project.package] as a
+        new [Package] and returns hash of this self"""
 
         resp = pypi_req(self.name)
         resp_json = resp.json()
@@ -179,7 +194,15 @@ class Package:
 
         if required:  # API gives NoneType sometimes
             for subpackage in required:
-                print(subpackage)  # TODO: parse
+                subpkg_split = subpackage.split(" ")
+
+                if len(subpkg_split) < 2 or subpkg_split[1] == ";":
+                    version = "*"
+                else:
+                    version = subpkg_split[1]
+
+                # make new packages into parent [Project] and recurse
+                Package(self.parent_proj, subpkg_split[0], version)
 
         return self.get_hash(resp)
 
@@ -192,7 +215,11 @@ class Package:
             return resp_json["urls"][0]["md5_digest"]
 
         try:
-            return resp_json["releases"][self.version][0]["md5_digest"]
+            # versions = resp_json["urls"]  # TODO: add versions, currently just * for all
+
+            # return versions[0]["md5_digest"]
+
+            return resp_json["urls"][0]["md5_digest"]  # NOTE: read above `TODO`
         except:
             raise ExceptionVersionError(
                 f"Version {self.version} defined for package '{self.name}' is not avalible!"
@@ -201,11 +228,11 @@ class Package:
     def _nthread_lock_package(self, lock_path: Path):
         """Designed for a multi-threaded locking system to add a single package"""
 
+        print(f"\tLocking {self}..")
+
         conn, c = _new_lockfile_connection(lock_path)
 
-        made_hash = self.get_hash(
-            pypi_req(self.name)
-        )  # NOTE will not work until [Package.get_hash] works
+        made_hash = self.get_hash(pypi_req(self.name))
 
         if c.execute(f"SELECT * FROM lock WHERE hash='{made_hash}'").fetchall():
             return  # hash already in lock, no need to add twice
@@ -236,9 +263,15 @@ def project_from_toml(owpm_path: Path) -> Project:
 def first_project_indir() -> Project:
     """Finds first .owpm file in running directory and returns [Project]"""
 
+    found = False
+
     for file in os.listdir("."):
         if file.endswith(".owpm"):
+            found = True
             return project_from_toml(Path(file))
+
+    if not found:
+        raise ExceptionOwpmNotFound("An .owpm file was not found in the current path!")
 
 
 def _del_path(file_path: Path):
@@ -290,24 +323,26 @@ def init(name, desc, ver):
 
 
 @click.command()
-@click.option("--name", help="Package name", prompt="Name of package to add")
-@click.option("--ver", help="Package version", prompt="Version of package", default="*")
-def add(name, ver):
+@click.argument("names", nargs=-1)
+def add(names):
     """Interactively adds a package to .owpm and saves .owpm"""
 
     print("Adding package(s)..")
 
     proj = first_project_indir()
-    new_pkg = Package(proj, name, ver)
+
+    for package in names:
+        new_package = Package(proj, package)
+        print(f"\tAdded {new_package}!")
 
     proj.save_proj()
 
-    print(f"Added '{new_pkg.name}':{new_pkg.version} to '{proj.name}.owpm'!")
+    print(f"Project saved to '{proj.name}.owpm' with {len(names)} package(s) added!")
 
 
 @click.command()
-@click.option("--name", help="Name of package to remove", prompt="Package name")
-def rem(name):
+@click.argument("names", nargs=-1)
+def rem(names):
     """Removes a given package, this is interactive and may have dupe packages
     with differing versions"""
 
@@ -316,21 +351,13 @@ def rem(name):
     proj = first_project_indir()
     found = []
 
-    for package in proj.packages:  # NOTE: quick n' dirty linear, fix if you want
-        if package.name == name:
-            found.append(package)
+    for package in proj.packages:
+        if package.name in names:
+            found.append(
+                package
+            )  # TODO: make sure it doesnt delete 2 different verions with same name
 
-    if not found:
-        print("No packages found!")
-    elif len(found) > 1:
-        for ind, found_package in enumerate(found):
-            print(f"({ind}): '{found_package.name}':{found_package.version}")
-
-        picked_pkg = found[int(input(f"Pick between 0 and {len(found) - 1}: "))]
-    else:
-        picked_pkg = found[0]
-
-    proj.remove_packages([picked_pkg])
+    proj.remove_packages(found)
 
     print(
         f"Removed '{picked_pkg.name}':{picked_pkg.version} from .owpm, lockfile and active venv!"
@@ -359,7 +386,7 @@ def lock(force):
 
     if smart_locked:
         print(
-            f"Did not lock project, '{proj.name}' is up-to-date! (try -f for forceful lock)"
+            f"Did not lock project, '{proj.name}.owpmlock' is up-to-date! (try -f for forceful lock)"
         )
     else:
         print(f"Locked project as '{proj.name}.owpmlock'!")
