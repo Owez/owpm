@@ -6,6 +6,7 @@ import sqlite3
 import os
 import requests
 import threading
+import time
 
 BUF_SIZE = 65536  # lockfile_hash buffer size
 
@@ -59,10 +60,16 @@ class Project:
         with open(save_path, "w+") as file:
             toml.dump(payload, file)
 
-    def lock_proj(self):
-        """Locks all packages and package deps then saves to .owpmlock path"""
+    def lock_proj(self, force: bool = False) -> bool:
+        """Locks all packages and package deps then saves to .owpmlock path;
+        `force` always locks, even if owpm thinks the packages are already locked.
+        Will return a False if it needed to lock or True if smart-locked"""
 
         lock_path = Path(f"{self.name}.owpmlock")
+
+        if not force and lock_path.exists() and self._compare_lock_hash(lock_path):
+            return True
+
         _del_path(lock_path)  # delete db
 
         conn, c = _new_lockfile_connection(lock_path)
@@ -83,9 +90,14 @@ class Project:
             )
             lock_thread.start()
 
+        time.sleep(0.5)  # race condition, wait for threading and filesystem to catch up
+
         self.lockfile_hash = self._hash_lockfile(
             lock_path
         )  # add new lockfile to self.lockfile_hash
+        self.save_proj()  # commit lockfile_hash to x.owpm
+
+        return False
 
     def install_packages(self):
         """Installs packages from lock_path, locks if lockfile is out of date and adds to active venv"""
@@ -123,7 +135,9 @@ class Project:
     def _compare_lock_hash(self, lock_path: Path) -> bool:
         """Compares self.lockfile_hash with a newly generated hash from the actual lockfile"""
 
-        return self._hash_lockfile(lock_path) == self.lockfile_hash
+        return (
+            self._hash_lockfile(lock_path) == self.lockfile_hash
+        )  # TODO: find reason this doesn't work
 
     def _hash_lockfile(self, lock_path: Path) -> str:
         """Hashes a lockfile to use in comparisons or at end of locking"""
@@ -324,15 +338,31 @@ def rem(name):
 
 
 @click.command()
-def lock():
+@click.option(
+    "--force",
+    "-f",
+    help="Forces a lock, even if lock is seemingly up-to-date",
+    is_flag=True,
+    default=False,
+)
+def lock(force):
     """Locks the first found .owpm file"""
 
-    print("Locking project..")
+    if force:
+        print("Forcefully locking project..")
+    else:
+        print("Locking project..")
 
     proj = first_project_indir()
-    proj.lock_proj()
 
-    print(f"Locked project as '{proj.name}.owpmlock'!")
+    smart_locked = proj.lock_proj(force)
+
+    if smart_locked:
+        print(
+            f"Did not lock project, '{proj.name}' is up-to-date! (try -f for forceful lock)"
+        )
+    else:
+        print(f"Locked project as '{proj.name}.owpmlock'!")
 
 
 base_group.add_command(init)
