@@ -8,6 +8,12 @@ A simple python package manager, like `poetry` or `pipenv`.
 pip3 install owpm.py
 ```
 
+Or to build an executable on Linux,
+
+```bash
+./buildexe.sh # It will output ./build/owpm.exe
+```
+
 ## Using
 
 ```bash
