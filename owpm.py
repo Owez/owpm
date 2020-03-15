@@ -116,6 +116,8 @@ class Project:
         `force` always locks, even if owpm thinks the packages are already locked.
         Will return a False if it needed to lock or True if smart-locked"""
 
+        print("Locking project..")
+
         lock_path = Path(f"{self.name}.owpmlock")
 
         if not force and lock_path.exists() and self._compare_lock_hash(lock_path):
@@ -153,10 +155,8 @@ class Project:
         adds to a new venv, which is then returned"""
 
         lock_path = Path(f"{self.name}.owpmlock")
-        lock_packages = []  # in format [{name, version, hash}] instead of in a class
 
-        if not lock_path.exists() or self._compare_lock_hash(lock_path) is False:
-            self.lock_proj()  # locks project if lockfile is out of date or doesn't exist
+        self.lock_proj()  # ensure project is locked
 
         conn, c = _new_lockfile_connection(lock_path)
 
@@ -221,15 +221,17 @@ class Project:
     def get_venv_pins(self) -> list:
         """Returns a list of [OwpmVenv] that are currently active"""
 
+        self.lock_proj()  # ensure project is locked
+
         lock_path = Path(f"{self.name}.owpmlock")
 
         conn, c = _new_lockfile_connection(lock_path)
 
         found_pins = c.execute(
             f"SELECT pin FROM venv WHERE hash='{self.lockfile_hash}'"
-        ).fetchall()  # only get from matching hash # TODO: fix
+        ).fetchall()  # only get from matching hash
 
-        print(found_pins, type(found_pins))
+        return found_pins
 
 
 class Package:
@@ -371,17 +373,22 @@ def _get_active_venv(proj: Project) -> OwpmVenv:
 
     found_pins = proj.get_venv_pins()
 
-    if len(found_pins) == 0:
-        venv = OwpmVenv()  # random pin generation
+    print("start")
 
-        # TODO use venv.path to run venv
+    if len(found_pins) == 0:
+        print("Active venv not found, creating new..")
+        venv = proj.build_proj()
+
+        # TODO: use venv.path to run venv
     elif len(found_pins) == 1:
         venv = OwpmVenv(found_pins[0])  # use first venv found
 
-        # TODO use venv.path to run venv
+        # TODO: use venv.path to run venv
     else:
-        print("Active venv not found, creating new..")
-        proj.build_proj()
+        # TODO: select intended venv and use venv.path to run venv
+        pass
+
+    return venv
 
 
 @click.group()
@@ -457,11 +464,6 @@ def rem(names):
 def lock(force):
     """Locks the first found .owpm file"""
 
-    if force:
-        print("Forcefully locking project..")
-    else:
-        print("Locking project..")
-
     proj = first_project_indir()
 
     smart_locked = proj.lock_proj(force)
@@ -482,7 +484,7 @@ def shell():
     proj = first_project_indir()
     venv = _get_active_venv(proj)
 
-    print("Coming soon..")
+    print("Coming soon..", venv)
 
 
 @click.command()
