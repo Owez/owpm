@@ -229,8 +229,8 @@ class Project:
 
         return venv
 
-    def remove_packages(self, to_remove: list, venv_pin: int):
-        """Removes a list of [Package] from .owpm, lockfile and current active venv"""
+    def remove_packages(self, to_remove: list):
+        """Removes a list of [Package] from .owpm and lockfile"""
 
         for package in to_remove:
             if type(package) != Package:
@@ -449,7 +449,7 @@ def add(names):
 
 
 @click.command()
-@click.argument("names", nargs=-1)
+@click.argument("names", nargs=-1, required=True)
 def rem(names):
     """Removes provided package(s). this is interactive and may have dupe packages
     with differing versions"""
@@ -467,9 +467,7 @@ def rem(names):
 
     proj.remove_packages(found)
 
-    print(
-        f"Removed '{picked_pkg.name}':{picked_pkg.version} from .owpm, lockfile and active venv!"
-    )
+    print(f"Removed {len(found)} package(s) from '{proj.name}.owpm' and lockfile!")
 
 
 @click.command()
@@ -539,7 +537,7 @@ def build():
 @click.option(
     "--pin", "-p", help="Pin wanted for removal", prompt="Pin to remove", type=int
 )
-def rem_venv(pin):
+def venv_rem(pin):
     """Deletes specified venv pin"""
 
     venv = OwpmVenv(pin, True)
@@ -552,7 +550,7 @@ def rem_venv(pin):
 
 
 @click.command()
-def rem_all_venv():
+def venv_rem_all():
     """Removes all venv files"""
 
     if VENV_PATH.exists():
@@ -565,15 +563,38 @@ def rem_all_venv():
         print("No venvs to remove!")
 
 
+@click.command()
+def venv_list():
+    """Lists all active venv files"""
+
+    print("Finding venvs..")
+
+    venv_count = 0
+
+    for venv in os.listdir(VENV_PATH):
+        venv_count += 1
+
+        print(f"\t{OwpmVenv(int(venv))}")
+
+    if venv_count == 0:
+        print("No venvs found, you may make one using `owpm build`!")
+    else:
+        print(f"Found {venv_count} venv(s)!")
+
+
 base_group.add_command(init)
+base_group.add_command(lock)
+
 base_group.add_command(add)
 base_group.add_command(rem)  # TODO: fix
-base_group.add_command(lock)
+
+base_group.add_command(build)
 base_group.add_command(shell)  # TODO: test
 base_group.add_command(run)  # TODO: test
-base_group.add_command(build)
-base_group.add_command(rem_venv)
-base_group.add_command(rem_all_venv)
+
+base_group.add_command(venv_rem)
+base_group.add_command(venv_rem_all)
+base_group.add_command(venv_list)
 
 if __name__ == "__main__":
     base_group()
