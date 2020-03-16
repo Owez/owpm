@@ -10,6 +10,7 @@ build/
 
 # owpm-specific
 *.owpmlock
+owpm_venv/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

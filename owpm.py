@@ -2,15 +2,16 @@ import hashlib
 import os
 import random
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
+from venv import EnvBuilder
 
 import click
 import requests
 import toml
-from venv import EnvBuilder
 
 BUF_SIZE = 65536  # lockfile_hash buffer size
 
@@ -52,13 +53,13 @@ class OwpmVenv:
     def create_venv(self):
         """Creates venv"""
 
-        # virtualenv.create_enviroment(self.path, site_packages=False)
+        EnvBuilder(system_site_packages=True).create(self.path)
         self.is_active = True
 
     def _get_path(self, pin: int) -> str:
         """Makes a venv path from a specified PIN"""
 
-        return f"{os.path.dirname(os.path.abspath(sys.argv[0]))}/owpm/owpm_venv/{pin}"
+        return f"{os.path.dirname(os.path.abspath(sys.argv[0]))}/owpm_venv/{pin}"
 
     def _get_pin(self) -> int:
         """Randomly generates an unused PIN for a new venv"""
@@ -154,7 +155,35 @@ class Project:
         venv = OwpmVenv()
         venv.create_venv()
 
-        # TODO: add stuff to venv
+        conn, c = _new_lockfile_connection(lock_path)
+
+        for dep in c.execute("SELECT * FROM lock").fetchall():
+            print(f"\tInstalling '{dep[0]}':{dep[1]}..")
+
+            # command_to_call = [
+            #     f"{venv.path}/bin/python",
+            #     "-m",
+            #     "pip",
+            #     "install",
+            #     "-I",
+            #     dep[0],
+            #     "==",
+            #     dep[1],
+            #     f"--hash=md5:{dep[2]}",
+            # ] # NOTE: use when versions work
+
+            command_to_call = [
+                f"{venv.path}/bin/python",
+                "-m",
+                "pip",
+                "install",
+                "-I",
+                dep[0],
+            ]  # NOTE: only for now
+
+            subprocess.call(command_to_call, stdout=subprocess.DEVNULL)
+
+        conn.close()
 
         return venv
 
@@ -415,6 +444,8 @@ def lock(force):
     """Locks the first found .owpm file"""
 
     proj = first_project_indir()
+
+    print("Locking project..")
 
     smart_locked = proj.lock_proj(force)
 
