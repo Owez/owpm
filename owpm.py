@@ -1,6 +1,7 @@
 import hashlib
 import os
 import random
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -12,7 +13,6 @@ from venv import EnvBuilder
 import click
 import requests
 import toml
-import shutil
 
 BUF_SIZE = 65536  # lockfile_hash buffer size
 VENV_PATH = Path(
