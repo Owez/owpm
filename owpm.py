@@ -34,6 +34,12 @@ class ExceptionOwpmNotFound(Exception):
     pass
 
 
+class ExceptionBadOs(Exception):
+    """When the user has an incompatible os. "bad os" is 100% for shortening"""
+
+    pass
+
+
 class OwpmVenv:
     """A built virtual enviroment created from a valid [Project]. If no venv_pin
     is given, it will generate a new one automatically"""
@@ -55,6 +61,23 @@ class OwpmVenv:
 
         EnvBuilder(system_site_packages=True).create(self.path)
         self.is_active = True
+
+    def start_shell(self):
+        """Creates an interactive shell"""
+
+        if os.name == "posix":
+            runcmd = [".", f"{self.path}/bin/activate"]
+        elif os.name == "nt":
+            runcmd = ["source", f"{self.path}/bin/activate"]
+        else:
+            raise ExceptionBadOs("Your operating system is not currenly supported!")
+
+        subprocess.call(runcmd)  # TODO: figure out permission error
+
+    def run(self, args: list):
+        """Runs given arguments inside of a temporary shell"""
+
+        print("Coming soon..")  # TODO: finish
 
     def _get_path(self, pin: int) -> str:
         """Makes a venv path from a specified PIN"""
@@ -464,9 +487,9 @@ def shell(pin):
     venv if one is not made"""
 
     proj = first_project_indir()
-    venv = OwpmVenv(pin)
 
-    print("Coming soon..", venv)
+    venv = OwpmVenv(pin)
+    venv.start_shell()
 
 
 @click.command()
@@ -477,9 +500,9 @@ def run(pin, args):
     already and create a venv if one is not made"""
 
     proj = first_project_indir()
-    venv = OwpmVenv(pin)
 
-    print("Coming soon..")
+    venv = OwpmVenv(pin)
+    venv.run(args)
 
 
 @click.command()
