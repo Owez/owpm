@@ -12,8 +12,12 @@ from venv import EnvBuilder
 import click
 import requests
 import toml
+import shutil
 
 BUF_SIZE = 65536  # lockfile_hash buffer size
+VENV_PATH = Path(
+    f"{os.path.dirname(os.path.abspath(sys.argv[0]))}/owpm_venv/"
+)  # path for virtual machines
 
 
 class ExceptionApiDown(Exception):
@@ -40,18 +44,24 @@ class ExceptionBadOs(Exception):
     pass
 
 
+class ExceptionVenvInactive(Exception):
+    """When trying to modify a venv (from [OwpmVenv]) but it is inactive/does not exist"""
+
+    pass
+
+
 class OwpmVenv:
     """A built virtual enviroment created from a valid [Project]. If no venv_pin
     is given, it will generate a new one automatically"""
 
-    def __init__(self, venv_pin: int = None):
+    def __init__(self, venv_pin: int = None, is_active: bool = False):
         if venv_pin is None:
             self.pin = self._get_pin()
         else:
             self.pin = venv_pin
 
         self.path = self._get_path(self.pin)  # NOTE: could make faster
-        self.is_active = False  # turns to True when activated
+        self.is_active = is_active  # turns to True when activated
 
     def __repr__(self):
         return f"venv-{self.pin}"
@@ -62,27 +72,36 @@ class OwpmVenv:
         EnvBuilder(system_site_packages=True).create(self.path)
         self.is_active = True
 
+    def delete(self):
+        """Deletes venv if active"""
+
+        if self.is_active and self.path.exists():
+            shutil.rmtree(self.path)
+            self.is_active = False
+        else:
+            raise ExceptionVenvInactive(
+                "This venv is inactive and so cannot be deleted!"
+            )
+
     def start_shell(self):
         """Creates an interactive shell"""
 
-        if os.name == "posix":
-            runcmd = [".", f"{self.path}/bin/activate"]
-        elif os.name == "nt":
-            runcmd = ["source", f"{self.path}/bin/activate"]
-        else:
+        if os.name != "posix":
             raise ExceptionBadOs("Your operating system is not currenly supported!")
 
-        subprocess.call(runcmd)  # TODO: figure out permission error
+        subprocess.call(
+            [".", f"{self.path}/bin/activate"], shell=True
+        )  # TODO: figure out permission error
 
     def run(self, args: list):
         """Runs given arguments inside of a temporary shell"""
 
         print("Coming soon..")  # TODO: finish
 
-    def _get_path(self, pin: int) -> str:
+    def _get_path(self, pin: int) -> Path:
         """Makes a venv path from a specified PIN"""
 
-        return f"{os.path.dirname(os.path.abspath(sys.argv[0]))}/owpm_venv/{pin}"
+        return VENV_PATH / str(pin)
 
     def _get_pin(self) -> int:
         """Randomly generates an unused PIN for a new venv"""
@@ -219,12 +238,10 @@ class Project:
                     f"Trying to remove '{package}' from db which is not a [Package]!"
                 )
 
-            self.packages.remove(to_remove)
+            self.packages.remove(to_remove)  # NOTE: may be broke
 
         self.save_proj()
-        self.lock_proj()  # TODO delete from lock db manually?
-
-        # TODO: remove from active venv
+        self.lock_proj()
 
     def _compare_lock_hash(self, lock_path: Path) -> bool:
         """Compares self.lockfile_hash with a newly generated hash from the actual lockfile"""
@@ -518,13 +535,45 @@ def build():
     print(f"Created {venv}!")
 
 
+@click.command()
+@click.option(
+    "--pin", "-p", help="Pin wanted for removal", prompt="Pin to remove", type=int
+)
+def rem_venv(pin):
+    """Deletes specified venv pin"""
+
+    venv = OwpmVenv(pin, True)
+
+    print(f"Deleting {venv}..")
+
+    venv.delete()
+
+    print(f"Deleted {venv}!")
+
+
+@click.command()
+def rem_all_venv():
+    """Removes all venv files"""
+
+    if VENV_PATH.exists():
+        print("Removing all venvs..")
+
+        shutil.rmtree(VENV_PATH)
+
+        print("Removed all venvs!")
+    else:
+        print("No venvs to remove!")
+
+
 base_group.add_command(init)
 base_group.add_command(add)
 base_group.add_command(rem)  # TODO: fix
 base_group.add_command(lock)
 base_group.add_command(shell)  # TODO: test
 base_group.add_command(run)  # TODO: test
-base_group.add_command(build)  # TODO: test
+base_group.add_command(build)
+base_group.add_command(rem_venv)
+base_group.add_command(rem_all_venv)
 
 if __name__ == "__main__":
     base_group()
