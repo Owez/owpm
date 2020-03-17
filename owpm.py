@@ -230,7 +230,7 @@ class Project:
         return venv
 
     def remove_packages(self, to_remove: list):
-        """Removes a list of [Package] from .owpm and lockfile"""
+        """Removes a list of [Package] from .owpm"""
 
         for package in to_remove:
             if type(package) != Package:
@@ -238,10 +238,12 @@ class Project:
                     f"Trying to remove '{package}' from db which is not a [Package]!"
                 )
 
-            self.packages.remove(to_remove)  # NOTE: may be broke
+            print(f"\tRemoving {package}")
 
+            self.packages.remove(package)
+
+        self.lockfile_hash = ""  # ensure lock
         self.save_proj()
-        self.lock_proj()
 
     def _compare_lock_hash(self, lock_path: Path) -> bool:
         """Compares self.lockfile_hash with a newly generated hash from the actual lockfile"""
@@ -285,6 +287,7 @@ class Package:
         self.parent_proj = parent_proj
 
         self.parent_proj.packages.append(self)
+        self.parent_proj.lockfile_hash = ""
 
     def __repr__(self):
         return f"'{self.name}':{self.version}"
@@ -431,7 +434,7 @@ def init(name, desc, ver):
 
 
 @click.command()
-@click.argument("names", nargs=-1)
+@click.argument("names", nargs=-1, required=True)
 def add(names):
     """Interactively adds a package to .owpm and saves .owpm"""
 
@@ -454,20 +457,30 @@ def rem(names):
     """Removes provided package(s). this is interactive and may have dupe packages
     with differing versions"""
 
-    print("Removing package(s)..")
-
     proj = first_project_indir()
     found = []
+
+    print("Removing package(s)..")
+
+    removed_any_pkg = False
 
     for package in proj.packages:
         if package.name in names:
             found.append(
                 package
             )  # TODO: make sure it doesnt delete 2 different verions with same name
+            removed_any_pkg = True
 
     proj.remove_packages(found)
 
-    print(f"Removed {len(found)} package(s) from '{proj.name}.owpm' and lockfile!")
+    if removed_any_pkg:
+        print(f"Removed {len(found)} package(s) from '{proj.name}.owpm' and lockfile!")
+    else:
+        compiled_names = ", ".join(
+            [f"'{name}'" for name in names]
+        )  # makes tuple into `'x', 'y', 'z'`
+
+        print(f"No packages named {compiled_names} where found so nothing was removed!")
 
 
 @click.command()
@@ -582,11 +595,29 @@ def venv_list():
         print(f"Found {venv_count} venv(s)!")
 
 
+@click.command()
+def pkg_list():
+    """Lists all packages of first found .owpm file"""
+
+    proj = first_project_indir()
+
+    if len(proj.packages) == 0:
+        print("No packages added, you can add using `owpm add`!")
+    else:
+        print("Listing packages..")
+
+        for package in proj.packages:
+            print(f"\t{package}")
+
+        print(f"Found {len(proj.packages)} package(s)!")
+
+
 base_group.add_command(init)
 base_group.add_command(lock)
 
 base_group.add_command(add)
 base_group.add_command(rem)  # TODO: fix
+base_group.add_command(pkg_list)
 
 base_group.add_command(build)
 base_group.add_command(shell)  # TODO: test
