@@ -170,7 +170,7 @@ class Project:
         conn.close()
 
         # adds all deps of package
-        for package in self.packages.copy():
+        for package in self.packages.copy():  # NOTE: also thread this potentially?
             package.get_subpackages()
 
         # add to db loop around
@@ -189,6 +189,10 @@ class Project:
     def build_proj(self) -> OwpmVenv:
         """Installs packages from lock_path, locks if lockfile is out of date and
         adds to a new venv, which is then returned for user to remember"""
+
+        # NOTE: in the future, restructure lockfile to have primary pkgs as
+        #       dependancies and make it lock *all*. Once it has, only install the
+        #       primary deps with hashes and then locally check the rest
 
         lock_path = Path(f"{self.name}.owpmlock")
 
@@ -298,7 +302,7 @@ class Package:
 
         print(f"\tPulling deps for {self}..")
 
-        resp = pypi_req(self.name)
+        resp = _pypi_req(self.name)
         resp_json = resp.json()
 
         required = resp_json["info"]["requires_dist"]
@@ -318,7 +322,7 @@ class Package:
         return self.get_hash(resp)
 
     def get_hash(self, package_resp: requests.Response) -> str:
-        """Gets lock hash, package_resp is for modularity (use `pypi_req("package")`)"""
+        """Gets lock hash, package_resp is for modularity (use `_pypi_req("package")`)"""
 
         resp_json = package_resp.json()
 
@@ -343,7 +347,7 @@ class Package:
 
         conn, c = _new_lockfile_connection(lock_path)
 
-        made_hash = self.get_hash(pypi_req(self.name))
+        made_hash = self.get_hash(_pypi_req(self.name))
 
         if c.execute(f"SELECT * FROM lock WHERE hash='{made_hash}'").fetchall():
             return  # hash already in lock, no need to add twice
@@ -401,7 +405,7 @@ def _new_lockfile_connection(lock_path: Path) -> tuple:
     return (conn, c)
 
 
-def pypi_req(package: str) -> requests.Response:
+def _pypi_req(package: str) -> requests.Response:
     """Constructs a fully-formed json request to the PyPI API using a given
     package name"""
 
@@ -582,17 +586,21 @@ def venv_list():
 
     print("Finding venvs..")
 
+    not_found_err = "No venvs found, you may make one using `owpm build`!"
     venv_count = 0
 
-    for venv in os.listdir(VENV_PATH):
-        venv_count += 1
+    if VENV_PATH.exists():
+        for venv in os.listdir(VENV_PATH):
+            venv_count += 1
 
-        print(f"\t{OwpmVenv(int(venv))}")
+            print(f"\t{OwpmVenv(int(venv))}")
 
-    if venv_count == 0:
-        print("No venvs found, you may make one using `owpm build`!")
+        if venv_count == 0:
+            print(not_found_err)
+        else:
+            print(f"Found {venv_count} venv(s)!")
     else:
-        print(f"Found {venv_count} venv(s)!")
+        print(not_found_err)
 
 
 @click.command()
@@ -616,7 +624,7 @@ base_group.add_command(init)
 base_group.add_command(lock)
 
 base_group.add_command(add)
-base_group.add_command(rem)  # TODO: fix
+base_group.add_command(rem)
 base_group.add_command(pkg_list)
 
 base_group.add_command(build)
