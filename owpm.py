@@ -1,3 +1,10 @@
+"""
+owpm.py
+=======
+The core module of owpm, used for everything apart from outside documentation/
+build scripts in the scope of owpm.
+"""
+
 import hashlib
 import os
 import random
