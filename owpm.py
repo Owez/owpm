@@ -193,7 +193,7 @@ class Project:
             )
             lock_thread.start()
 
-        time.sleep(1)  # TODO: fix race condition that worserns the more locks
+        time.sleep(len(self.packages) / 32)  # TODO: fix race condition that worserns the more locks
 
         self._update_lockfile_hash(lock_path)  # add new lockfile to x.owpm
 
