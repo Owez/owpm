@@ -57,6 +57,12 @@ class ExceptionVenvInactive(Exception):
     pass
 
 
+class ExceptionPackageNotFound(Exception):
+    """When a package could not be found inside of pypi/other package repos"""
+
+    pass
+
+
 class OwpmVenv:
     """A built virtual enviroment created from a valid [Project]. If no venv_pin
     is given, it will generate a new one automatically"""
@@ -187,7 +193,7 @@ class Project:
             )
             lock_thread.start()
 
-        time.sleep(0.5)  # race condition, wait for threading and filesystem to catch up
+        time.sleep(1)  # TODO: fix race condition that worserns the more locks
 
         self._update_lockfile_hash(lock_path)  # add new lockfile to x.owpm
 
@@ -278,7 +284,8 @@ class Project:
         return md5.hexdigest()
 
     def _update_lockfile_hash(self, lock_path: Path):
-        """Updates lockfile hash and saves it to a .owpm file (doesn't save all in self.packages)"""
+        """Updates lockfile hash and saves it to a .owpm file (doesn't save all
+        in self.packages)"""
 
         save_path = Path(f"{self.name}.owpm")
 
@@ -290,15 +297,18 @@ class Project:
 
 
 class Package:
-    """A single package when using owpm. `save_hash` is generated automatically after locking once"""
+    """A single package when using owpm. `save_hash` is generated automatically
+    after locking once. should_rem_hash is internal use on loading from .owpm files"""
 
-    def __init__(self, parent_proj: Project, name: str, version: str = "*"):
+    def __init__(self, parent_proj: Project, name: str, version: str = "*", should_rem_hash: bool = True):
         self.name = name
         self.version = version
         self.parent_proj = parent_proj
 
         self.parent_proj.packages.append(self)
-        self.parent_proj.lockfile_hash = ""
+
+        if should_rem_hash:
+            self.parent_proj.lockfile_hash = "" # ensure locks
 
     def __repr__(self):
         return f"'{self.name}':{self.version}"
@@ -376,8 +386,9 @@ def project_from_toml(owpm_path: Path) -> Project:
         owpm_path.stem, payload["desc"], payload["version"], payload["lockfile_hash"]
     )
 
+
     for package in payload["packages"]:
-        new_package = Package(project, package, payload["packages"][package])
+        new_package = Package(project, package, payload["packages"][package], False)
 
     return project
 
@@ -418,10 +429,16 @@ def _pypi_req(package: str) -> requests.Response:
 
     resp = requests.get(f"https://pypi.org/pypi/{package}/json")
 
-    if resp.status_code != 200:
-        raise ExceptionApiDown("A seemingly valid API request to PyPI has failed!")
-
-    return resp
+    if resp.status_code == 200:
+        return resp
+    elif resp.status_code == 404:
+        raise ExceptionPackageNotFound(
+            f"The package '{package}' was not found in pypi!"
+        )
+    else:
+        raise ExceptionApiDown(
+            f"A seemingly valid API request to PyPI has failed with error #{resp.status_code}!"
+        )
 
 
 @click.group()
