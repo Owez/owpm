@@ -193,7 +193,10 @@ class Project:
             )
             lock_thread.start()
 
-        time.sleep(len(self.packages) / 32)  # TODO: fix race condition that worserns the more locks
+        # TODO: fix race condition that worserns the more locks
+        race_conditon_workaround = len(self.packages) / 32
+        print(f"Waiting {race_conditon_workaround} second(s) for package lock..")
+        time.sleep(race_conditon_workaround)
 
         self._update_lockfile_hash(lock_path)  # add new lockfile to x.owpm
 
@@ -300,7 +303,13 @@ class Package:
     """A single package when using owpm. `save_hash` is generated automatically
     after locking once. should_rem_hash is internal use on loading from .owpm files"""
 
-    def __init__(self, parent_proj: Project, name: str, version: str = "*", should_rem_hash: bool = True):
+    def __init__(
+        self,
+        parent_proj: Project,
+        name: str,
+        version: str = "*",
+        should_rem_hash: bool = True,
+    ):
         self.name = name
         self.version = version
         self.parent_proj = parent_proj
@@ -308,7 +317,7 @@ class Package:
         self.parent_proj.packages.append(self)
 
         if should_rem_hash:
-            self.parent_proj.lockfile_hash = "" # ensure locks
+            self.parent_proj.lockfile_hash = ""  # ensure locks
 
     def __repr__(self):
         return f"'{self.name}':{self.version}"
@@ -385,7 +394,6 @@ def project_from_toml(owpm_path: Path) -> Project:
     project = Project(
         owpm_path.stem, payload["desc"], payload["version"], payload["lockfile_hash"]
     )
-
 
     for package in payload["packages"]:
         new_package = Package(project, package, payload["packages"][package], False)
