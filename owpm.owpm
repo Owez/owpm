@@ -1,6 +1,6 @@
 desc = "Simple python package manager"
 version = "0.1.0"
-lockfile_hash = "a5e88b98aac56588afd0de190fa43a37"
+lockfile_hash = "872a5fa63773564d3757a94b13c3aaf3"
 
 [packages]
 requests = "*"

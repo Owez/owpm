@@ -111,6 +111,13 @@ class OwpmVenv:
 
         print("Coming soon..")  # TODO: finish
 
+    def check_venv_hashes(self, packages: list) -> bool:
+        """Checks a sqlite `SELECT * FROM locks` to locally installed hashes"""
+
+        print("Checking installed packages for corruption..")
+
+        pass
+
     def _get_path(self, pin: int) -> Path:
         """Makes a venv path from a specified PIN"""
 
@@ -163,21 +170,23 @@ class Project:
         with open(save_path, "w+") as file:
             toml.dump(payload, file)
 
-    def lock_proj(self, force: bool = False) -> bool:
+    def lock_proj(self, force_lock: bool = False) -> bool:
         """Locks all packages and package deps then saves to .owpmlock path;
         `force` always locks, even if owpm thinks the packages are already locked.
         Will return a False if it needed to lock or True if smart-locked"""
 
         lock_path = Path(f"{self.name}.owpmlock")
 
-        if not force and lock_path.exists() and self._compare_lock_hash(lock_path):
+        if not force_lock and lock_path.exists() and self._compare_lock_hash(lock_path):
             return True
 
         _del_path(lock_path)  # delete db
 
         conn, c = _new_lockfile_connection(lock_path)
 
-        c.execute("CREATE TABLE lock ( name text, version text, hash text )")
+        c.execute(
+            "CREATE TABLE lock ( name text, version text, hash text, is_dep int )"
+        )
 
         conn.commit()
         conn.close()
@@ -194,15 +203,15 @@ class Project:
             lock_thread.start()
 
         # TODO: fix race condition that worserns the more locks
-        race_conditon_workaround = len(self.packages) / 32
-        print(f"Waiting {race_conditon_workaround} second(s) for package lock..")
+        race_conditon_workaround = len(self.packages) / 28
+        print(f"\tWaiting {race_conditon_workaround} second(s) for package lock..")
         time.sleep(race_conditon_workaround)
 
         self._update_lockfile_hash(lock_path)  # add new lockfile to x.owpm
 
         return False
 
-    def build_proj(self) -> OwpmVenv:
+    def build_proj(self, force_lock: bool = False) -> OwpmVenv:
         """Installs packages from lock_path, locks if lockfile is out of date and
         adds to a new venv, which is then returned for user to remember"""
 
@@ -212,14 +221,15 @@ class Project:
 
         lock_path = Path(f"{self.name}.owpmlock")
 
-        self.lock_proj()  # ensure project is locked
+        self.lock_proj(force_lock)  # ensure project is locked
 
         venv = OwpmVenv()
         venv.create_venv()
 
         conn, c = _new_lockfile_connection(lock_path)
 
-        for dep in c.execute("SELECT * FROM lock").fetchall():
+        # install all non-dep packages
+        for dep in c.execute("SELECT * FROM lock WHERE is_dep=0").fetchall():
             print(f"\tInstalling '{dep[0]}':{dep[1]}..")
 
             # command_to_call = [
@@ -244,6 +254,10 @@ class Project:
             ]  # NOTE: only for now
 
             subprocess.call(command_to_call, stdout=subprocess.DEVNULL)
+
+        venv.check_venv_hashes(
+            c.execute("SELECT * FROM lock").fetchall()
+        )  # check that hashes are in order
 
         conn.close()
 
@@ -308,11 +322,13 @@ class Package:
         parent_proj: Project,
         name: str,
         version: str = "*",
-        should_rem_hash: bool = True,
+        is_dep: bool = False,
+        should_rem_hash: bool = True,  # TODO: find point where this is used
     ):
         self.name = name
         self.version = version
         self.parent_proj = parent_proj
+        self.is_dep = is_dep
 
         self.parent_proj.packages.append(self)
 
@@ -343,7 +359,7 @@ class Package:
                     version = subpkg_split[1]
 
                 # make new packages into parent [Project] and recurse
-                Package(self.parent_proj, subpkg_split[0], version)
+                Package(self.parent_proj, subpkg_split[0], version, True)
 
         return self.get_hash(resp)
 
@@ -376,11 +392,14 @@ class Package:
         made_hash = self.get_hash(_pypi_req(self.name))
 
         if c.execute(f"SELECT * FROM lock WHERE hash='{made_hash}'").fetchall():
-            return  # hash already in lock, no need to add twice
+            return  # hash already in lock, no need to add twicee
 
-        c.execute(
-            f"INSERT INTO lock VALUES ( '{self.name}', '{self.version}', '{made_hash}' )"
-        )
+        if self.is_dep:
+            insert_query = f"INSERT INTO lock VALUES ( '{self.name}', '{self.version}', '{made_hash}', 1 )"
+        else:
+            insert_query = f"INSERT INTO lock VALUES ( '{self.name}', '{self.version}', '{made_hash}', 0 )"
+
+        c.execute(insert_query)
 
         conn.commit()
         conn.close()
@@ -396,7 +415,9 @@ def project_from_toml(owpm_path: Path) -> Project:
     )
 
     for package in payload["packages"]:
-        new_package = Package(project, package, payload["packages"][package], False)
+        new_package = Package(
+            project, package, payload["packages"][package], False, False
+        )
 
     return project
 
@@ -570,14 +591,21 @@ def run(pin, args):
 
 
 @click.command()
-def build():
+@click.option(
+    "--force",
+    "-f",
+    help="Forces a lock, even if lock is seemingly up-to-date",
+    is_flag=True,
+    default=False,
+)
+def build(force):
     """Constructs a new venv and provides the PIN"""
 
     proj = first_project_indir()
 
     print("Constructing new venv..")
 
-    venv = proj.build_proj()
+    venv = proj.build_proj(force)
 
     print(f"Created {venv}!")
 
