@@ -14,9 +14,10 @@ import subprocess
 import sys
 import threading
 import time
+from packaging.requirements import Requirement
+from packaging.version import parse as pkg_parse
 from pathlib import Path
 from venv import EnvBuilder
-
 import click
 import requests
 import toml
@@ -203,7 +204,7 @@ class Project:
             lock_thread.start()
 
         # TODO: fix race condition that worserns the more locks
-        race_conditon_workaround = len(self.packages) / 28
+        race_conditon_workaround = len(self.packages) / 20
         print(f"\tWaiting {race_conditon_workaround} second(s) for package lock..")
         time.sleep(race_conditon_workaround)
 
@@ -321,12 +322,12 @@ class Package:
         self,
         parent_proj: Project,
         name: str,
-        version: str = "*",
+        version_req: str = "*",
         is_dep: bool = False,
-        should_rem_hash: bool = True,  # TODO: find point where this is used
+        should_rem_hash: bool = True,
     ):
         self.name = name
-        self.version = version
+        self.version_req = version_req
         self.parent_proj = parent_proj
         self.is_dep = is_dep
 
@@ -336,7 +337,7 @@ class Package:
             self.parent_proj.lockfile_hash = ""  # ensure locks
 
     def __repr__(self):
-        return f"'{self.name}':{self.version}"
+        return f"'{self.name}':{self.version_req}"
 
     def get_subpackages(self) -> str:
         """Scans pypi for dependancies and adds them to [Project.package] as a
@@ -353,13 +354,8 @@ class Package:
             for subpackage in required:
                 subpkg_split = subpackage.split(" ")
 
-                if len(subpkg_split) < 2 or subpkg_split[1] == ";":
-                    version = "*"
-                else:
-                    version = subpkg_split[1]
-
                 # make new packages into parent [Project] and recurse
-                Package(self.parent_proj, subpkg_split[0], version, True)
+                Package(self.parent_proj, subpkg_split[0], subpackage, True)
 
         return self.get_hash(resp)
 
@@ -368,24 +364,30 @@ class Package:
 
         resp_json = package_resp.json()
 
-        if self.version == "*":
+        if self.version_req == "*":
             return resp_json["urls"][0]["md5_digest"]
 
-        try:
-            # versions = resp_json["urls"]  # TODO: add versions, currently just * for all
+        version_requires = Requirement(self.version_req)
 
-            # return versions[0]["md5_digest"]
+        for version_string in resp_json["releases"]:
+            parsed_version = pkg_parse(
+                version_string
+            )  # parse already-valid pypi into package.version.Version
 
-            return resp_json["urls"][0]["md5_digest"]  # NOTE: read above `TODO`
-        except:
-            raise ExceptionVersionError(
-                f"Version {self.version} defined for package '{self.name}' is not avalible!"
-            )
+            # if parsed_version matches required
+            if parsed_version in version_requires.specifier:
+                return resp_json["releases"][version_string][0]["md5_digest"]
+
+        raise ExceptionVersionError(
+            f"Package {self} with this specific version could not be found in pypi!"
+        )  # if package was not returned by for loop
 
     def _nthread_lock_package(self, lock_path: Path):
         """Designed for a multi-threaded locking system to add a single package"""
 
-        print(f"\tLocking {self}..")
+        print(
+            f"\tLocking {self}.."
+        )  # TODO: add a "mini version" so `\tLocking 'chardet':chardet (<4,>=3.0.2)..` doesn't happen
 
         conn, c = _new_lockfile_connection(lock_path)
 
@@ -395,11 +397,15 @@ class Package:
             return  # hash already in lock, no need to add twicee
 
         if self.is_dep:
-            insert_query = f"INSERT INTO lock VALUES ( '{self.name}', '{self.version}', '{made_hash}', 1 )"
+            c.execute(
+                "INSERT INTO lock VALUES ( ?, ?, ?, 1 )",
+                (self.name, self.version_req, made_hash),
+            )
         else:
-            insert_query = f"INSERT INTO lock VALUES ( '{self.name}', '{self.version}', '{made_hash}', 0 )"
-
-        c.execute(insert_query)
+            c.execute(
+                "INSERT INTO lock VALUES ( ?, ?, ?, 0 )",
+                (self.name, self.version_req, made_hash),
+            )
 
         conn.commit()
         conn.close()
@@ -664,20 +670,40 @@ def venv_list():
 
 
 @click.command()
-def pkg_list():
+@click.option(
+    "--lockfile",
+    "-l",
+    help="Lists all packages and all dependancies from lockfile",
+    is_flag=True,
+    default=False,
+)
+def pkg_list(lockfile):
     """Lists all packages of first found .owpm file"""
 
     proj = first_project_indir()
 
-    if len(proj.packages) == 0:
-        print("No packages added, you can add using `owpm add`!")
-    else:
-        print("Listing packages..")
+    if lockfile:
+        print("Force-locking project..")
+        proj.lock_proj(True)
+        print("Project has been force-locked!")
+
+        print("Listing dependancies..")
 
         for package in proj.packages:
-            print(f"\t{package}")
+            if package.is_dep:
+                print(f"\t{package}")
 
-        print(f"Found {len(proj.packages)} package(s)!")
+        print(f"Found dependancies of count {len(proj.packages)-1}!")
+    else:
+        if len(proj.packages) == 0:
+            print("No packages added, you can add using `owpm add`!")
+        else:
+            print("Listing packages..")
+
+            for package in proj.packages:
+                print(f"\t{package}")
+
+            print(f"Found {len(proj.packages)} package(s)!")
 
 
 base_group.add_command(init)
