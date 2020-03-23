@@ -416,8 +416,8 @@ class Package:
             )
         else:
             c.execute(
-                "INSERT INTO lock VALUES ( ?, ?, ?, 0 )",
-                (self.name, self.version_req, made_hash),
+                "INSERT INTO lock VALUES ( ?, ?, ?, ?, 0 )",
+                (self.name, self.version_req, made_hash, self.is_dev),
             )
 
         conn.commit()
