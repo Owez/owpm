@@ -166,7 +166,10 @@ class Project:
         }
 
         for package in self.packages:
-            payload["packages"][package.name] = package.version
+            if package.is_dev:
+                payload["dev-packages"][package.name] = package.version
+            else:
+                payload["packages"][package.name] = package.version
 
         with open(save_path, "w+") as file:
             toml.dump(payload, file)
@@ -186,7 +189,7 @@ class Project:
         conn, c = _new_lockfile_connection(lock_path)
 
         c.execute(
-            "CREATE TABLE lock ( name text, version text, hash text, is_dep int )"
+            "CREATE TABLE lock ( name text, version text, hash text, is_dev int, is_dep int )"
         )
 
         conn.commit()
@@ -212,7 +215,9 @@ class Project:
 
         return False
 
-    def build_proj(self, force_lock: bool = False) -> OwpmVenv:
+    def build_proj(
+        self, force_lock: bool = False, use_dev_deps: bool = True
+    ) -> OwpmVenv:
         """Installs packages from lock_path, locks if lockfile is out of date and
         adds to a new venv, which is then returned for user to remember"""
 
@@ -228,10 +233,13 @@ class Project:
         venv.create_venv()
 
         conn, c = _new_lockfile_connection(lock_path)
+        found_non_deps = c.execute(
+            "SELECT * FROM lock WHERE is_dev=? AND is_dep=0", (int(use_dev_deps),)
+        ).fetchall()  # find all non-dep packages and filter for use_dev_deps
 
         # install all non-dep packages
-        for dep in c.execute("SELECT * FROM lock WHERE is_dep=0").fetchall():
-            print(f"\tInstalling '{dep[0]}':{dep[1]}..")
+        for non_dep in found_non_deps:
+            print(f"\tInstalling '{non_dep[0]}':{non_dep[1]}..")
 
             # command_to_call = [
             #     f"{venv.path}/bin/python",
@@ -251,7 +259,7 @@ class Project:
                 "pip",
                 "install",
                 "-I",
-                dep[0],
+                non_dep[0],
             ]  # NOTE: only for now
 
             subprocess.call(command_to_call, stdout=subprocess.DEVNULL)
@@ -316,19 +324,22 @@ class Project:
 
 class Package:
     """A single package when using owpm. `save_hash` is generated automatically
-    after locking once. should_rem_hash is internal use on loading from .owpm files"""
+    after locking once. should_rem_hash is internal use on loading from .owpm
+    files and is_dev defines if it is a development package or not"""
 
     def __init__(
         self,
         parent_proj: Project,
         name: str,
         version_req: str = "*",
+        is_dev: bool = False,
         is_dep: bool = False,
         should_rem_hash: bool = True,
     ):
         self.name = name
         self.version_req = version_req
         self.parent_proj = parent_proj
+        self.is_dev = is_dev
         self.is_dep = is_dep
 
         self.parent_proj.packages.append(self)
@@ -354,8 +365,10 @@ class Package:
             for subpackage in required:
                 subpkg_split = subpackage.split(" ")
 
-                # make new packages into parent [Project] and recurse
-                Package(self.parent_proj, subpkg_split[0], subpackage, True)
+                # make new packages into parent [Project] using same is_dev as self
+                Package(
+                    self.parent_proj, subpkg_split[0], subpackage, self.is_dev, True
+                )
 
         return self.get_hash(resp)
 
@@ -398,8 +411,8 @@ class Package:
 
         if self.is_dep:
             c.execute(
-                "INSERT INTO lock VALUES ( ?, ?, ?, 1 )",
-                (self.name, self.version_req, made_hash),
+                "INSERT INTO lock VALUES ( ?, ?, ?, ?, 1 )",
+                (self.name, self.version_req, made_hash, self.is_dev),
             )
         else:
             c.execute(
@@ -422,8 +435,15 @@ def project_from_toml(owpm_path: Path) -> Project:
 
     for package in payload["packages"]:
         new_package = Package(
-            project, package, payload["packages"][package], False, False
+            project, package, payload["packages"][package], False, False, False
         )
+
+    # optional development packages
+    if "dev-packages" in payload:
+        for package in payload["dev-packages"]:
+            new_package = Package(
+                project, package, payload["packages"][package], True, False, False
+            )
 
     return project
 
@@ -498,7 +518,14 @@ def init(name, desc, ver):
 
 @click.command()
 @click.argument("names", nargs=-1, required=True)
-def add(names):
+@click.option(
+    "--dev",
+    "-d",
+    help="Saves all packages as development packages (not used with build --publish)",
+    is_flag=True,
+    default=False,
+)
+def add(names, dev):
     """Interactively adds a package to .owpm and saves .owpm"""
 
     print("Adding package(s)..")
@@ -506,7 +533,7 @@ def add(names):
     proj = first_project_indir()
 
     for package in names:
-        new_package = Package(proj, package)
+        new_package = Package(proj, package, "*", dev)  # TODO allow custom versions
         print(f"\tAdded {new_package}!")
 
     proj.save_proj()
@@ -604,14 +631,21 @@ def run(pin, args):
     is_flag=True,
     default=False,
 )
-def build(force):
+@click.option(
+    "--publish",
+    "-p",
+    help="Makes build into a 'published' build with no development deps being used",
+    is_flag=True,
+    default=False,
+)
+def build(force, publish):
     """Constructs a new venv and provides the PIN"""
 
     proj = first_project_indir()
 
     print("Constructing new venv..")
 
-    venv = proj.build_proj(force)
+    venv = proj.build_proj(force, publish)
 
     print(f"Created {venv}!")
 
@@ -695,15 +729,36 @@ def pkg_list(lockfile):
 
         print(f"Found dependancies of count {len(proj.packages)-1}!")
     else:
-        if len(proj.packages) == 0:
-            print("No packages added, you can add using `owpm add`!")
+        packages = []
+        dev_packages = []
+
+        for package in proj.packages:
+            if package.is_dev:
+                dev_packages.append(str(package))
+            else:
+                packages.append(str(package))
+
+        if len(packages) == 0:
+            print("No normal packages found, you can use `owpm add` to add some!")
         else:
             print("Listing packages..")
 
-            for package in proj.packages:
+            for package in packages:
                 print(f"\t{package}")
 
-            print(f"Found {len(proj.packages)} package(s)!")
+            print(f"Found {len(packages)} package(s)!")
+
+        if len(dev_packages) == 0:
+            print(
+                "No development packages found, you can use `owpm add -d` to add some!"
+            )
+        else:
+            print("Listing development packages..")
+
+            for dev_package in dev_packages:
+                print(f"\t{dev_package}")
+
+            print(f"Found {len(dev_packages)} development package(s)!")
 
 
 base_group.add_command(init)
