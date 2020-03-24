@@ -3,6 +3,9 @@ owpm.py
 =======
 The core module of owpm, used for everything apart from outside documentation/
 build scripts in the scope of owpm.
+
+NOTE: For breaking changes inside of the lockfile when developing, remember to
+bump the OWPM_LOCKFILE_VERSION constant
 """
 
 import hashlib
@@ -14,13 +17,17 @@ import subprocess
 import sys
 import threading
 import time
-from packaging.requirements import Requirement
-from packaging.version import parse as pkg_parse
 from pathlib import Path
 from venv import EnvBuilder
+
 import click
 import requests
 import toml
+from packaging.requirements import Requirement
+from packaging.version import parse as pkg_parse
+
+"""The current source compatibility level, used for breaking changes to lockfile"""
+OWPM_LOCKFILE_VERSION = 1
 
 BUF_SIZE = 65536  # lockfile_hash buffer size
 VENV_PATH = Path(
@@ -60,6 +67,12 @@ class ExceptionVenvInactive(Exception):
 
 class ExceptionPackageNotFound(Exception):
     """When a package could not be found inside of pypi/other package repos"""
+
+    pass
+
+
+class ExceptionOldLockfileSpec(Exception):
+    """This occurs when the lockfile version/specification is too new or old for owpm to recognise"""
 
     pass
 
@@ -167,9 +180,12 @@ class Project:
 
         for package in self.packages:
             if package.is_dev:
-                payload["dev-packages"][package.name] = package.version
+                if "dev-packages" not in payload:
+                    payload["dev-packages"] = {}  # ensure optional is created
+
+                payload["dev-packages"][package.name] = package.version_req
             else:
-                payload["packages"][package.name] = package.version
+                payload["packages"][package.name] = package.version_req
 
         with open(save_path, "w+") as file:
             toml.dump(payload, file)
@@ -190,7 +206,10 @@ class Project:
 
         c.execute(
             "CREATE TABLE lock ( name text, version text, hash text, is_dev int, is_dep int )"
-        )
+        )  # add main lock table
+        c.execute(
+            f"PRAGMA user_version = {OWPM_LOCKFILE_VERSION}"
+        )  # add mark of compatibility
 
         conn.commit()
         conn.close()
@@ -233,6 +252,11 @@ class Project:
         venv.create_venv()
 
         conn, c = _new_lockfile_connection(lock_path)
+
+        _verify_lockfile_version(
+            c.execute("PRAGMA user_version").fetchall()[0][0]
+        )  # ensure lockfile is to owpm's spec
+
         found_non_deps = c.execute(
             "SELECT * FROM lock WHERE is_dev=? AND is_dep=0", (int(use_dev_deps),)
         ).fetchall()  # find all non-dep packages and filter for use_dev_deps
@@ -442,7 +466,7 @@ def project_from_toml(owpm_path: Path) -> Project:
     if "dev-packages" in payload:
         for package in payload["dev-packages"]:
             new_package = Package(
-                project, package, payload["packages"][package], True, False, False
+                project, package, payload["dev-packages"][package], True, False, False
             )
 
     return project
@@ -467,6 +491,15 @@ def _del_path(file_path: Path):
 
     if file_path.exists():
         os.remove(file_path)
+
+
+def _verify_lockfile_version(user_version: int) -> bool:
+    """Verifies lockfile using local tally of user_version to ensure compatibility"""
+
+    if user_version != OWPM_LOCKFILE_VERSION:  # NOTE: could be not hardcoded in future
+        raise ExceptionOldLockfileSpec(
+            "The .owpmlock version/specification is too new or old for owpm to recognise!"
+        )
 
 
 def _new_lockfile_connection(lock_path: Path) -> tuple:
@@ -528,7 +561,10 @@ def init(name, desc, ver):
 def add(names, dev):
     """Interactively adds a package to .owpm and saves .owpm"""
 
-    print("Adding package(s)..")
+    if dev:
+        print("Adding development package(s)..")
+    else:
+        print("Adding package(s)..")
 
     proj = first_project_indir()
 
@@ -543,19 +579,29 @@ def add(names, dev):
 
 @click.command()
 @click.argument("names", nargs=-1, required=True)
-def rem(names):
+@click.option(
+    "--dev",
+    "-d",
+    help="Removes development packages instead of normal ones",
+    is_flag=True,
+    default=False,
+)
+def rem(names, dev):
     """Removes provided package(s). this is interactive and may have dupe packages
     with differing versions"""
 
     proj = first_project_indir()
     found = []
 
-    print("Removing package(s)..")
+    if dev:
+        print("Removing development package(s)..")
+    else:
+        print("Removing package(s)..")
 
     removed_any_pkg = False
 
     for package in proj.packages:
-        if package.name in names:
+        if package.name in names and package.is_dev == dev:
             found.append(
                 package
             )  # TODO: make sure it doesnt delete 2 different verions with same name
