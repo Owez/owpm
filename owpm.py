@@ -113,9 +113,7 @@ class OwpmVenv:
         if os.name != "posix":
             raise ExceptionBadOs("Your operating system is not currenly supported!")
 
-        subprocess.call(
-            [".", f"{self.path}/bin/activate"], shell=True
-        )  # TODO: figure out permission error
+        pass # TODO: use VIRTUALENV_PATH thing for cryptic start because shells
 
     def run(self, args: list):
         """Runs given arguments inside of a temporary shell"""
@@ -254,8 +252,13 @@ class Project:
             c.execute("PRAGMA user_version").fetchall()[0][0]
         )  # ensure lockfile is to owpm's spec
 
+        if not use_dev_deps:
+            select_query = "SELECT * FROM lock WHERE is_dep=0"
+        else:
+            select_query = "SELECT * FROM lock WHERE is_dev=0 AND is_dep=0"
+
         found_non_deps = c.execute(
-            "SELECT * FROM lock WHERE is_dev=? AND is_dep=0", (int(use_dev_deps),)
+            select_query
         ).fetchall()  # find all non-dep packages and filter for use_dev_deps
 
         # install all non-dep packages
@@ -694,7 +697,10 @@ def build(force, publish):
 
     proj = first_project_indir()
 
-    print("Constructing new venv..")
+    if publish:
+        print("Constructing new production venv..")
+    else:
+        print("Constructing new development venv..")
 
     venv = proj.build_proj(force, publish)
 
