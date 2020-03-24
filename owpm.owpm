@@ -1,11 +1,12 @@
 desc = "Simple python package manager"
 version = "0.1.0"
-lockfile_hash = "6ef1a60e8f2b5a5d573d140e4a573e8e"
+lockfile_hash = "01374c3d65f0ecb6bc83dd52ea8ffbaa"
 
 [packages]
 requests = "*"
 toml = "*"
 click = "*"
+packaging = "*"
 
 [dev-packages]
 sphinx = "*"
