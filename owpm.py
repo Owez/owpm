@@ -3,9 +3,6 @@ owpm.py
 =======
 The core module of owpm, used for everything apart from outside documentation/
 build scripts in the scope of owpm.
-
-NOTE: For breaking changes inside of the lockfile when developing, remember to
-bump the OWPM_LOCKFILE_VERSION constant
 """
 
 import hashlib
@@ -130,7 +127,7 @@ class OwpmVenv:
 
         print("Checking installed packages for corruption..")
 
-        pass
+        pass  # TODO: make this work
 
     def _get_path(self, pin: int) -> Path:
         """Makes a venv path from a specified PIN"""

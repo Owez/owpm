@@ -1,16 +1,12 @@
-Welcome to owpm's documentation!
-================================
+Documentation for owpm
+======================
 
-.. automodule:: owpm
-   :members:
+Welcome to the portal/hub for documentation on owpm.
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+   :maxdepth: 1
+   :caption: Documentation links:
 
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+   quickstart
+   api_docs
+   development
