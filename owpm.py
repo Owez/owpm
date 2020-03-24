@@ -399,6 +399,11 @@ class Package:
         resp_json = package_resp.json()
 
         if self.version_req == "*":
+            if len(resp_json["urls"]) == 0:
+                raise ExceptionVersionError(
+                    f"Package {self} has been created too recently for pypi to compute!"
+                )
+
             return resp_json["urls"][0]["md5_digest"]
 
         version_requires = Requirement(self.version_req)
@@ -408,9 +413,12 @@ class Package:
                 version_string
             )  # parse already-valid pypi into package.version.Version
 
+            content_body = resp_json["releases"][version_string]
+
             # if parsed_version matches required
-            if parsed_version in version_requires.specifier:
-                return resp_json["releases"][version_string][0]["md5_digest"]
+            if parsed_version in version_requires.specifier and len(content_body) > 0:
+                # TODO: make sure that release even has content, if not install version before
+                return content_body[0]["md5_digest"]
 
         raise ExceptionVersionError(
             f"Package {self} with this specific version could not be found in pypi!"
