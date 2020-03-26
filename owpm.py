@@ -11,17 +11,17 @@ import random
 import shutil
 import sqlite3
 import subprocess
+from packaging.requirements import Requirement
+from packaging.version import parse as pkg_parse
 import sys
 import threading
 import time
 from pathlib import Path
 from venv import EnvBuilder
-
 import click
 import requests
 import toml
-from packaging.requirements import Requirement
-from packaging.version import parse as pkg_parse
+import pexpect
 
 """The current source compatibility level, used for breaking changes to lockfile"""
 OWPM_LOCKFILE_VERSION = 1
@@ -107,18 +107,23 @@ class OwpmVenv:
                 "This venv is inactive and so cannot be deleted!"
             )
 
-    def start_shell(self):
-        """Creates an interactive shell"""
+    def spawn_shell(self, args: list):
+        """Creates an interactive shell and injects command base into"""
 
-        if os.name != "posix":
-            raise ExceptionBadOs("Your operating system is not currenly supported!")
+        activation = f". {self.path}/bin/activate"  # TODO: more os support
+        t_size = self._get_terminal_size()
 
-        pass # TODO: use VIRTUALENV_PATH thing for cryptic start because shells
+        shell = pexpect.spawn("bash", ["-i"], dimensions=t_size)
+        shell.sendline(activation)
 
-    def run(self, args: list):
-        """Runs given arguments inside of a temporary shell"""
+        shell.sendline(f"clear && echo 'Started {self}!'")
+        shell.sendline(args)
 
-        print("Coming soon..")  # TODO: finish
+        shell.interact(escape_character=None)
+
+        # on exit
+        shell.close()
+        sys.exit(shell.exitstatus)
 
     def check_venv_hashes(self, packages: list) -> bool:
         """Checks a sqlite `SELECT * FROM locks` to locally installed hashes"""
@@ -126,6 +131,14 @@ class OwpmVenv:
         print("Checking installed packages for corruption..")
 
         pass  # TODO: make this work
+
+    def _get_terminal_size(self) -> tuple:
+        """Gets the terminal size for current running. FIXME: this is currently
+        linux only and may not work for edge-cases on even linux."""
+
+        return tuple(
+            [int(i) for i in os.popen("stty size", "r").read().split()]
+        )  # apologies for spaghetti
 
     def _get_path(self, pin: int) -> Path:
         """Makes a venv path from a specified PIN"""
@@ -493,6 +506,11 @@ def first_project_indir() -> Project:
     if not found:
         raise ExceptionOwpmNotFound("An .owpm file was not found in the current path!")
 
+def get_pin_from_buildlog(log: str) -> int:
+    """Returns the pin from the log of `owpm build` for automation purposes.
+    NOTE: This is a temporary workaround, pins will be phased out soon"""
+
+    return int(log.splitlines()[-1][13:-1]) # get last line and strip 13 front and 1 last
 
 def _del_path(file_path: Path):
     """Deletes given file path if it exists"""
@@ -654,27 +672,17 @@ def lock(force):
 
 @click.command()
 @click.option("--pin", "-p", help="Virtual enviroment PIN", required=True)
-def shell(pin):
-    """Starts an interactive venv shell. Will lock if not already and create a
-    venv if one is not made"""
-
-    proj = first_project_indir()
-
-    venv = OwpmVenv(pin)
-    venv.start_shell()
-
-
-@click.command()
-@click.option("--pin", "-p", help="Virtual enviroment PIN", required=True)
 @click.argument("args", nargs=-1)
 def run(pin, args):
-    """Runs provided commands inside of a temporary venv shell. Will lock if not
-    already and create a venv if one is not made"""
+    """Runs provided commands or start an interactive session inside of a
+    temporary venv shell. Will lock if not already and create a venv if one is
+    not made"""
+
 
     proj = first_project_indir()
 
     venv = OwpmVenv(pin)
-    venv.run(args)
+    venv.spawn_shell(" ".join(args))
 
 
 @click.command()
@@ -826,8 +834,7 @@ base_group.add_command(rem)
 base_group.add_command(pkg_list)
 
 base_group.add_command(build)
-base_group.add_command(shell)  # TODO: test
-base_group.add_command(run)  # TODO: test
+base_group.add_command(run)  
 
 base_group.add_command(venv_rem)
 base_group.add_command(venv_rem_all)
