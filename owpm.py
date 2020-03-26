@@ -27,9 +27,11 @@ import pexpect
 OWPM_LOCKFILE_VERSION = 1
 
 BUF_SIZE = 65536  # lockfile_hash buffer size
-VENV_PATH = Path(
-    f"{os.path.dirname(os.path.abspath(sys.argv[0]))}/owpm_venv/"
-)  # path for virtual machines
+
+BASE_PATH = Path(os.path.dirname(os.path.abspath(sys.argv[0])))
+
+"""Path for virtual machines"""
+VENV_PATH = BASE_PATH / "owpm_venv"
 
 
 class ExceptionApiDown(Exception):
@@ -245,16 +247,25 @@ class Project:
     def build_proj(
         self, force_lock: bool = False, use_dev_deps: bool = True
     ) -> OwpmVenv:
-        """Installs packages from lock_path, locks if lockfile is out of date and
-        adds to a new venv, which is then returned for user to remember"""
-
-        # NOTE: in the future, restructure lockfile to have primary pkgs as
-        #       dependancies and make it lock *all*. Once it has, only install the
-        #       primary deps with hashes and then locally check the rest
+        """Returns an installed venv or installs packages from lock_path, locks
+        if lockfile is out of date and adds to a new venv, which is then returned
+        for user to remember"""
 
         lock_path = Path(f"{self.name}.owpmlock")
 
         self.lock_proj(force_lock)  # ensure project is locked
+
+        venv_info = _get_venv_status()
+
+        if venv_info:
+            if (
+                venv_info["force_lock"] == force_lock
+                and venv_info["use_dev_deps"] == use_dev_deps
+                and venv_info["lockfile_hash"] == self.lockfile_hash
+            ):
+                return OwpmVenv(venv_info["pin"], True)
+        else:
+            _set_venv_status({})  # set a new dict
 
         venv = OwpmVenv()
         venv.create_venv()
@@ -306,6 +317,15 @@ class Project:
         )  # check that hashes are in order
 
         conn.close()
+
+        _set_venv_status(
+            {
+                "pin": venv.pin,
+                "lockfile_hash": self.lockfile_hash,
+                "force_lock": force_lock,
+                "use_dev_deps": use_dev_deps,
+            }
+        )  # caching mechanism so build_proj can skip installs if exactly the same
 
         return venv
 
@@ -506,11 +526,15 @@ def first_project_indir() -> Project:
     if not found:
         raise ExceptionOwpmNotFound("An .owpm file was not found in the current path!")
 
+
 def get_pin_from_buildlog(log: str) -> int:
     """Returns the pin from the log of `owpm build` for automation purposes.
     NOTE: This is a temporary workaround, pins will be phased out soon"""
 
-    return int(log.splitlines()[-1][13:-1]) # get last line and strip 13 front and 1 last
+    return int(
+        log.splitlines()[-1][13:-1]
+    )  # get last line and strip 13 front and 1 last
+
 
 def _del_path(file_path: Path):
     """Deletes given file path if it exists"""
@@ -553,6 +577,26 @@ def _pypi_req(package: str) -> requests.Response:
         raise ExceptionApiDown(
             f"A seemingly valid API request to PyPI has failed with error #{resp.status_code}!"
         )
+
+
+def _set_venv_status(arg: dict):
+    """Sets the current venv inside of owpm data dir like owpm_venv"""
+
+    with open(BASE_PATH / "owpm_venv.toml", "w+") as file:
+        toml.dump(arg, file)
+
+
+def _get_venv_status() -> dict:
+    """Gets status of venv, if any are active"""
+
+    toml_path = BASE_PATH / "owpm_venv.toml"
+
+    if toml_path.exists():
+        with open(toml_path, "r") as file:
+            return toml.load(file)
+    else:
+        _set_venv_status({})
+        return {} # we know it's empty so no need to open again
 
 
 @click.group()
@@ -677,7 +721,6 @@ def run(pin, args):
     """Runs provided commands or start an interactive session inside of a
     temporary venv shell. Will lock if not already and create a venv if one is
     not made"""
-
 
     proj = first_project_indir()
 
@@ -834,7 +877,7 @@ base_group.add_command(rem)
 base_group.add_command(pkg_list)
 
 base_group.add_command(build)
-base_group.add_command(run)  
+base_group.add_command(run)
 
 base_group.add_command(venv_rem)
 base_group.add_command(venv_rem_all)

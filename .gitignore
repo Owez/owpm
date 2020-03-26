@@ -11,6 +11,7 @@ build/
 # owpm-specific
 *.owpmlock
 owpm_venv/
+owpm_venv.toml
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
