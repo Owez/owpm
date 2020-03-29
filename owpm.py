@@ -87,7 +87,11 @@ class OwpmVenv:
             self.pin = venv_pin
 
         self.path = self._get_path(self.pin)  # NOTE: could make faster
-        self.is_active = is_active  # turns to True when activated
+
+        if self.path.exists():  # if venv is active
+            self.is_active = True
+        else:
+            self.is_active = is_active
 
     def __repr__(self):
         return f"venv-{self.pin}"
@@ -118,8 +122,8 @@ class OwpmVenv:
         shell = pexpect.spawn("bash", ["-i"], dimensions=t_size)
         shell.sendline(activation)
 
-        shell.sendline(f"clear && echo 'Started {self}!'")
-        shell.sendline(args)
+        if len(args) > 0:
+            shell.sendline(args)
 
         shell.interact(escape_character=None)
 
@@ -258,7 +262,11 @@ class Project:
         venv_info = _get_venv_status()
 
         if venv_info:
-            if (
+            venv_path = VENV_PATH / venv_info["pin"]
+
+            if not venv_path.exists():
+                _set_venv_status({})  # set a new dict as venv is corrupt
+            elif (
                 venv_info["force_lock"] == force_lock
                 and venv_info["use_dev_deps"] == use_dev_deps
                 and venv_info["lockfile_hash"] == self.lockfile_hash
@@ -289,18 +297,6 @@ class Project:
         for non_dep in found_non_deps:
             print(f"\tInstalling '{non_dep[0]}':{non_dep[1]}..")
 
-            # command_to_call = [
-            #     f"{venv.path}/bin/python",
-            #     "-m",
-            #     "pip",
-            #     "install",
-            #     "-I",
-            #     dep[0],
-            #     "==",
-            #     dep[1],
-            #     f"--hash=md5:{dep[2]}",
-            # ] # NOTE: use when versions work
-
             command_to_call = [
                 f"{venv.path}/bin/python",
                 "-m",
@@ -308,7 +304,7 @@ class Project:
                 "install",
                 "-I",
                 non_dep[0],
-            ]  # NOTE: only for now
+            ]
 
             subprocess.call(command_to_call, stdout=subprocess.DEVNULL)
 
@@ -596,7 +592,7 @@ def _get_venv_status() -> dict:
             return toml.load(file)
     else:
         _set_venv_status({})
-        return {} # we know it's empty so no need to open again
+        return {}  # we know it's empty so no need to open again
 
 
 @click.group()
@@ -715,17 +711,41 @@ def lock(force):
 
 
 @click.command()
-@click.option("--pin", "-p", help="Virtual enviroment PIN", required=True)
+@click.option("--pin", "-p", help="Custom virtual enviroment PIN", required=False)
+@click.option(
+    "--force",
+    "-f",
+    help="Forces a lock, even if lock is seemingly up-to-date",
+    is_flag=True,
+    default=False,
+)
+@click.option(
+    "--publish",
+    "-p",
+    help="Makes build into a 'published' build with no development deps being used",
+    is_flag=True,
+    default=False,
+)
 @click.argument("args", nargs=-1)
-def run(pin, args):
-    """Runs provided commands or start an interactive session inside of a
-    temporary venv shell. Will lock if not already and create a venv if one is
-    not made"""
+def run(pin, args, force, publish):
+    """Starts an interactive virtual enviroment or a temporary enviroment using
+    args given. If a custom PIN is given, it won't use the current virtual
+    enviroment cache"""
 
     proj = first_project_indir()
 
-    venv = OwpmVenv(pin)
+    print("Acquiring venv..")
+
+    if pin is None:
+        venv = proj.build_proj(force, publish)
+    else:
+        venv = OwpmVenv(pin)
+
+    print("Starting venv..")
+
     venv.spawn_shell(" ".join(args))
+
+    print(f"Finished running {venv}!")
 
 
 @click.command()
