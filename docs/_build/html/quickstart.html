@@ -37,7 +37,7 @@
 <p><code class="docutils literal notranslate"><span class="pre">owpm</span></code> is a simple python package manager, like <code class="docutils literal notranslate"><span class="pre">poetry</span></code> or <code class="docutils literal notranslate"><span class="pre">pipenv</span></code>.</p>
 <div class="section" id="installing">
 <h2>Installing<a class="headerlink" href="#installing" title="Permalink to this headline">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip3 install owpm.py
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip3 install owpm
 </pre></div>
 </div>
 <p>Or to build an executable on Linux,</p>
@@ -48,13 +48,19 @@
 </div>
 <div class="section" id="using">
 <h2>Using<a class="headerlink" href="#using" title="Permalink to this headline">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>owpm --help
+<p>Initiate a new owpm project in the current directory:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>owpm init
 </pre></div>
 </div>
-<p>If that does not work,</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python3 -m owpm --help
+<p>Add some packages:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>owpm add <span class="o">[</span>packages<span class="o">]</span> <span class="c1"># example: `owpm add click requests flask`</span>
 </pre></div>
 </div>
+<p>Start a virtual enviroment:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>owpm run
+</pre></div>
+</div>
+<p>If you cloned a repository with owpm enabled, simply run <code class="docutils literal notranslate"><span class="pre">owpm</span> <span class="pre">run</span></code> to start a virtual enviroment. You can also insert commands with <code class="docutils literal notranslate"><span class="pre">owpm</span> <span class="pre">run</span> <span class="pre">[args]</span></code> (e.g. <code class="docutils literal notranslate"><span class="pre">owpm</span> <span class="pre">run</span> <span class="pre">sleep</span> <span class="pre">20</span></code>)!</p>
 </div>
 </div>
 
