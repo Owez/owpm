@@ -11,17 +11,20 @@ import random
 import shutil
 import sqlite3
 import subprocess
-from packaging.requirements import Requirement
-from packaging.version import parse as pkg_parse
 import sys
 import threading
 import time
 from pathlib import Path
 from venv import EnvBuilder
+
 import click
+import pexpect
 import requests
 import toml
-import pexpect
+from packaging.requirements import Requirement
+from packaging.version import parse as pkg_parse
+
+import shellingham
 
 """The current source compatibility level, used for breaking changes to lockfile"""
 OWPM_LOCKFILE_VERSION = 1
@@ -116,7 +119,9 @@ class OwpmVenv:
     def spawn_shell(self, args: list):
         """Creates an interactive shell and injects command base into"""
 
-        activation = f". {self.path}/bin/activate"  # TODO: more os support
+        cmd, suffix = self._get_spawn_os()
+
+        activation = f"{cmd} {self.path}/bin/activate{suffix}"
         t_size = self._get_terminal_size()
 
         shell = pexpect.spawn("bash", ["-i"], dimensions=t_size)
@@ -137,6 +142,36 @@ class OwpmVenv:
         print("Checking installed packages for corruption..")
 
         pass  # TODO: make this work
+
+    def _find_default_shell(self) -> str:
+        """Returns the default shell if any, used when shellingham fails"""
+
+        if os.name == "posix":
+            cmd = os.environ["SHELL"]
+            name = cmd.split("/")[-1]
+
+            return (cmd, name)
+        elif os.name == "nt":
+            return (os.environ["COMSPEC"], "")
+
+        raise ExceptionBadOs(f"Your {os.name} system is not supported!")
+
+    def _get_spawn_os(self) -> list:
+        """Returns list about os-specific actions related to self.spawn_shell"""
+
+        try:
+            found_shell = shellingham.detect_shell()
+        except shellingham.ShellDetectionFailure:
+            found_shell = self._find_default_shell()
+        except:
+            return ExceptionBadOs(f"Could not detect shell for your {os.name} system!")
+
+        if found_shell[0] == "bash":
+            return (".", "")
+        elif found_shell[0] == "csh":
+            return ("source", ".csh")
+        elif found_shell[0] == "fish":
+            return ("source", ".fish")
 
     def _get_terminal_size(self) -> tuple:
         """Gets the terminal size for current running. FIXME: this is currently
