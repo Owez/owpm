@@ -1,0 +1,271 @@
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>API Documentation &#8212; owpm  documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/language_data.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Development Notes" href="development.html" />
+    <link rel="prev" title="Quickstart" href="quickstart.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="api-documentation">
+<h1>API Documentation<a class="headerlink" href="#api-documentation" title="Permalink to this headline">¶</a></h1>
+<p>Below is the documentation for the main owpm API for development refrerence. This
+is different to the “developer” docs as they cover general maintainability notes
+whereas this is an api-specific section that is automatically generated.</p>
+<span class="target" id="module-owpm"></span><div class="section" id="owpm-py">
+<h2>owpm.py<a class="headerlink" href="#owpm-py" title="Permalink to this headline">¶</a></h2>
+<p>The core module of owpm, used for everything apart from outside documentation/
+build scripts in the scope of owpm.</p>
+<dl class="data">
+<dt id="owpm.BASE_PATH">
+<code class="sig-prename descclassname">owpm.</code><code class="sig-name descname">BASE_PATH</code><em class="property"> = PosixPath('/home/owen/.local/bin')</em><a class="headerlink" href="#owpm.BASE_PATH" title="Permalink to this definition">¶</a></dt>
+<dd><p>Path for virtual machines</p>
+</dd></dl>
+
+<dl class="exception">
+<dt id="owpm.ExceptionApiDown">
+<em class="property">exception </em><code class="sig-prename descclassname">owpm.</code><code class="sig-name descname">ExceptionApiDown</code><a class="headerlink" href="#owpm.ExceptionApiDown" title="Permalink to this definition">¶</a></dt>
+<dd><p>When a seemingly correct API request to a package repo does not return status 200</p>
+</dd></dl>
+
+<dl class="exception">
+<dt id="owpm.ExceptionBadOs">
+<em class="property">exception </em><code class="sig-prename descclassname">owpm.</code><code class="sig-name descname">ExceptionBadOs</code><a class="headerlink" href="#owpm.ExceptionBadOs" title="Permalink to this definition">¶</a></dt>
+<dd><p>When the user has an incompatible os. “bad os” is 100% for shortening</p>
+</dd></dl>
+
+<dl class="exception">
+<dt id="owpm.ExceptionOldLockfileSpec">
+<em class="property">exception </em><code class="sig-prename descclassname">owpm.</code><code class="sig-name descname">ExceptionOldLockfileSpec</code><a class="headerlink" href="#owpm.ExceptionOldLockfileSpec" title="Permalink to this definition">¶</a></dt>
+<dd><p>This occurs when the lockfile version/specification is too new or old for owpm to recognise</p>
+</dd></dl>
+
+<dl class="exception">
+<dt id="owpm.ExceptionOwpmNotFound">
+<em class="property">exception </em><code class="sig-prename descclassname">owpm.</code><code class="sig-name descname">ExceptionOwpmNotFound</code><a class="headerlink" href="#owpm.ExceptionOwpmNotFound" title="Permalink to this definition">¶</a></dt>
+<dd><p>When a detection function cannot find a .owpm file</p>
+</dd></dl>
+
+<dl class="exception">
+<dt id="owpm.ExceptionPackageNotFound">
+<em class="property">exception </em><code class="sig-prename descclassname">owpm.</code><code class="sig-name descname">ExceptionPackageNotFound</code><a class="headerlink" href="#owpm.ExceptionPackageNotFound" title="Permalink to this definition">¶</a></dt>
+<dd><p>When a package could not be found inside of pypi/other package repos</p>
+</dd></dl>
+
+<dl class="exception">
+<dt id="owpm.ExceptionVenvInactive">
+<em class="property">exception </em><code class="sig-prename descclassname">owpm.</code><code class="sig-name descname">ExceptionVenvInactive</code><a class="headerlink" href="#owpm.ExceptionVenvInactive" title="Permalink to this definition">¶</a></dt>
+<dd><p>When trying to modify a venv (from [OwpmVenv]) but it is inactive/does not exist</p>
+</dd></dl>
+
+<dl class="exception">
+<dt id="owpm.ExceptionVersionError">
+<em class="property">exception </em><code class="sig-prename descclassname">owpm.</code><code class="sig-name descname">ExceptionVersionError</code><a class="headerlink" href="#owpm.ExceptionVersionError" title="Permalink to this definition">¶</a></dt>
+<dd><p>When a user gives a version of a package that is not avalible</p>
+</dd></dl>
+
+<dl class="class">
+<dt id="owpm.OwpmVenv">
+<em class="property">class </em><code class="sig-prename descclassname">owpm.</code><code class="sig-name descname">OwpmVenv</code><span class="sig-paren">(</span><em class="sig-param">venv_pin: int = None</em>, <em class="sig-param">is_active: bool = False</em><span class="sig-paren">)</span><a class="headerlink" href="#owpm.OwpmVenv" title="Permalink to this definition">¶</a></dt>
+<dd><p>A built virtual enviroment created from a valid [Project]. If no venv_pin
+is given, it will generate a new one automatically</p>
+<dl class="method">
+<dt id="owpm.OwpmVenv.check_venv_hashes">
+<code class="sig-name descname">check_venv_hashes</code><span class="sig-paren">(</span><em class="sig-param">packages: list</em><span class="sig-paren">)</span> &#x2192; bool<a class="headerlink" href="#owpm.OwpmVenv.check_venv_hashes" title="Permalink to this definition">¶</a></dt>
+<dd><p>Checks a sqlite <cite>SELECT * FROM locks</cite> to locally installed hashes</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="owpm.OwpmVenv.create_venv">
+<code class="sig-name descname">create_venv</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#owpm.OwpmVenv.create_venv" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates venv</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="owpm.OwpmVenv.delete">
+<code class="sig-name descname">delete</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#owpm.OwpmVenv.delete" title="Permalink to this definition">¶</a></dt>
+<dd><p>Deletes venv if active</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="owpm.OwpmVenv.spawn_shell">
+<code class="sig-name descname">spawn_shell</code><span class="sig-paren">(</span><em class="sig-param">args: list</em><span class="sig-paren">)</span><a class="headerlink" href="#owpm.OwpmVenv.spawn_shell" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates an interactive shell and injects command base into</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="owpm.Package">
+<em class="property">class </em><code class="sig-prename descclassname">owpm.</code><code class="sig-name descname">Package</code><span class="sig-paren">(</span><em class="sig-param">parent_proj: owpm.Project</em>, <em class="sig-param">name: str</em>, <em class="sig-param">version_req: str = '*'</em>, <em class="sig-param">is_dev: bool = False</em>, <em class="sig-param">is_dep: bool = False</em>, <em class="sig-param">should_rem_hash: bool = True</em><span class="sig-paren">)</span><a class="headerlink" href="#owpm.Package" title="Permalink to this definition">¶</a></dt>
+<dd><p>A single package when using owpm. <cite>save_hash</cite> is generated automatically
+after locking once. should_rem_hash is internal use on loading from .owpm
+files and is_dev defines if it is a development package or not</p>
+<dl class="method">
+<dt id="owpm.Package.get_hash">
+<code class="sig-name descname">get_hash</code><span class="sig-paren">(</span><em class="sig-param">package_resp: requests.models.Response</em><span class="sig-paren">)</span> &#x2192; str<a class="headerlink" href="#owpm.Package.get_hash" title="Permalink to this definition">¶</a></dt>
+<dd><p>Gets lock hash, package_resp is for modularity (use <cite>_pypi_req(“package”)</cite>)</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="owpm.Package.get_subpackages">
+<code class="sig-name descname">get_subpackages</code><span class="sig-paren">(</span><span class="sig-paren">)</span> &#x2192; str<a class="headerlink" href="#owpm.Package.get_subpackages" title="Permalink to this definition">¶</a></dt>
+<dd><p>Scans pypi for dependancies and adds them to [Project.package] as a
+new [Package] and returns hash of this self</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="owpm.Project">
+<em class="property">class </em><code class="sig-prename descclassname">owpm.</code><code class="sig-name descname">Project</code><span class="sig-paren">(</span><em class="sig-param">name: str</em>, <em class="sig-param">desc: str = 'No description'</em>, <em class="sig-param">version: str = '0.1.0'</em>, <em class="sig-param">lockfile_hash: str = ''</em><span class="sig-paren">)</span><a class="headerlink" href="#owpm.Project" title="Permalink to this definition">¶</a></dt>
+<dd><p>The overall project file. Name is the save name and lockfile_hash is for stopping mutliple locks on add -&gt; install</p>
+<dl class="method">
+<dt id="owpm.Project.build_proj">
+<code class="sig-name descname">build_proj</code><span class="sig-paren">(</span><em class="sig-param">force_lock: bool = False</em>, <em class="sig-param">use_dev_deps: bool = True</em><span class="sig-paren">)</span> &#x2192; owpm.OwpmVenv<a class="headerlink" href="#owpm.Project.build_proj" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns an installed venv or installs packages from lock_path, locks
+if lockfile is out of date and adds to a new venv, which is then returned
+for user to remember</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="owpm.Project.lock_proj">
+<code class="sig-name descname">lock_proj</code><span class="sig-paren">(</span><em class="sig-param">force_lock: bool = False</em><span class="sig-paren">)</span> &#x2192; bool<a class="headerlink" href="#owpm.Project.lock_proj" title="Permalink to this definition">¶</a></dt>
+<dd><p>Locks all packages and package deps then saves to .owpmlock path;
+<cite>force</cite> always locks, even if owpm thinks the packages are already locked.
+Will return a False if it needed to lock or True if smart-locked</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="owpm.Project.remove_packages">
+<code class="sig-name descname">remove_packages</code><span class="sig-paren">(</span><em class="sig-param">to_remove: list</em><span class="sig-paren">)</span><a class="headerlink" href="#owpm.Project.remove_packages" title="Permalink to this definition">¶</a></dt>
+<dd><p>Removes a list of [Package] from .owpm</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="owpm.Project.save_proj">
+<code class="sig-name descname">save_proj</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#owpm.Project.save_proj" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates a human-readable and editable save file</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="owpm.first_project_indir">
+<code class="sig-prename descclassname">owpm.</code><code class="sig-name descname">first_project_indir</code><span class="sig-paren">(</span><span class="sig-paren">)</span> &#x2192; owpm.Project<a class="headerlink" href="#owpm.first_project_indir" title="Permalink to this definition">¶</a></dt>
+<dd><p>Finds first .owpm file in running directory and returns [Project]</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="owpm.get_pin_from_buildlog">
+<code class="sig-prename descclassname">owpm.</code><code class="sig-name descname">get_pin_from_buildlog</code><span class="sig-paren">(</span><em class="sig-param">log: str</em><span class="sig-paren">)</span> &#x2192; int<a class="headerlink" href="#owpm.get_pin_from_buildlog" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the pin from the log of <cite>owpm build</cite> for automation purposes.
+NOTE: This is a temporary workaround, pins will be phased out soon</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="owpm.project_from_toml">
+<code class="sig-prename descclassname">owpm.</code><code class="sig-name descname">project_from_toml</code><span class="sig-paren">(</span><em class="sig-param">owpm_path: pathlib.Path</em><span class="sig-paren">)</span> &#x2192; owpm.Project<a class="headerlink" href="#owpm.project_from_toml" title="Permalink to this definition">¶</a></dt>
+<dd><p>Gets a [Project] from a given TOML path</p>
+</dd></dl>
+
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">owpm</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption"><span class="caption-text">Documentation links:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">API Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="development.html">Development Notes</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="quickstart.html" title="previous chapter">Quickstart</a></li>
+      <li>Next: <a href="development.html" title="next chapter">Development Notes</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2020, Owen Griffiths.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.4.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/api_docs.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
