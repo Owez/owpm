@@ -436,7 +436,17 @@ class Package:
             self.parent_proj.lockfile_hash = ""  # ensure locks
 
     def __repr__(self):
-        return f"'{self.name}':{self.version_req}"
+        if self.version_req == "*":
+            repr_version = self.version_req
+        else:
+            version_split = self.version_req.split(" ;")[0].split(" ")
+
+            if len(version_split) == 1:
+                repr_version = "*"
+            else:
+                repr_version = version_split[1][1:-1]
+
+        return f"'{self.name}':{repr_version}"
 
     def get_subpackages(self) -> str:
         """Scans pypi for dependancies and adds them to [Project.package] as a
@@ -817,30 +827,31 @@ def build(force, publish):
 @click.option(
     "--pin", "-p", help="Pin wanted for removal", prompt="Pin to remove", type=int
 )
-def venv_rem(pin):
+@click.option(
+    "--rem_all",
+    "-a",
+    help="Removes all virtual enviroments",
+    is_flag=True,
+    default=False,
+)
+def venv_rem(pin, rem_all):
     """Deletes specified venv pin"""
 
-    venv = OwpmVenv(pin, True)
+    if rem_all:
+        if VENV_PATH.exists():
+            print("Removing all venvs..")
 
-    print(f"Deleting {venv}..")
+            shutil.rmtree(VENV_PATH)
 
-    venv.delete()
-
-    print(f"Deleted {venv}!")
-
-
-@click.command()
-def venv_rem_all():
-    """Removes all venv files"""
-
-    if VENV_PATH.exists():
-        print("Removing all venvs..")
-
-        shutil.rmtree(VENV_PATH)
-
-        print("Removed all venvs!")
+            print("Removed all venvs!")
+        else:
+            print("No venvs to remove!")
     else:
-        print("No venvs to remove!")
+        venv = OwpmVenv(pin, True)
+
+        print(f"Deleting {venv}..")
+        venv.delete()
+        print(f"Deleted {venv}!")
 
 
 @click.command()
@@ -935,7 +946,6 @@ base_group.add_command(build)
 base_group.add_command(run)
 
 base_group.add_command(venv_rem)
-base_group.add_command(venv_rem_all)
 base_group.add_command(venv_list)
 
 if __name__ == "__main__":
