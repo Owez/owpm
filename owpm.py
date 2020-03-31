@@ -568,15 +568,6 @@ def first_project_indir() -> Project:
         raise ExceptionOwpmNotFound("An .owpm file was not found in the current path!")
 
 
-def get_pin_from_buildlog(log: str) -> int:
-    """Returns the pin from the log of `owpm build` for automation purposes.
-    NOTE: This is a temporary workaround, pins will be phased out soon"""
-
-    return int(
-        log.splitlines()[-1][13:-1]
-    )  # get last line and strip 13 front and 1 last
-
-
 def _del_path(file_path: Path):
     """Deletes given file path if it exists"""
 
