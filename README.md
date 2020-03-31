@@ -2,4 +2,5 @@
 
 owpm, the simple python package manager.
 
-- [Documentation](https://owpm.github.io/owpm)
+- **[Quickstart](https://owpm.github.io/owpm/_build/html/quickstart.html)**
+- [Documentation](https://owpm.github.io/)
