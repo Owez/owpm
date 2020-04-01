@@ -506,7 +506,7 @@ class Package:
 
         print(
             f"\tLocking {self}.."
-        )  # TODO: add a "mini version" so `\tLocking 'chardet':chardet (<4,>=3.0.2)..` doesn't happen
+        )
 
         conn, c = _new_lockfile_connection(lock_path)
 
@@ -671,7 +671,12 @@ def add(names, dev):
     proj = first_project_indir()
 
     for package in names:
-        new_package = Package(proj, package, "*", dev)  # TODO allow custom versions
+        package_info = package.split("==")
+
+        if len(package_info) == 1:
+            package_info.append("*") # if no version is set, add latest
+
+        new_package = Package(proj, package_info[0], package_info[1], dev)  # TODO allow custom versions
         print(f"\tAdded {new_package}!")
 
     proj.save_proj()
