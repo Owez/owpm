@@ -56,7 +56,7 @@ class ExceptionOwpmNotFound(Exception):
 
 
 class ExceptionBadOs(Exception):
-    """When the user has an incompatible os. "bad os" is 100% for shortening"""
+    """When the user has an incompatible os"""
 
     pass
 
@@ -74,7 +74,7 @@ class ExceptionPackageNotFound(Exception):
 
 
 class ExceptionOldLockfileSpec(Exception):
-    """This occurs when the lockfile version/specification is too new or old for owpm to recognise"""
+    """When the lockfile version/specification is too new or old for owpm to recognise"""
 
     pass
 
@@ -156,8 +156,8 @@ class OwpmVenv:
 
         raise ExceptionBadOs(f"Your {os.name} system is not supported!")
 
-    def _get_spawn_os(self) -> list:
-        """Returns list about os-specific actions related to self.spawn_shell"""
+    def _get_spawn_os(self) -> tuple:
+        """Returns tuple about os-specific actions related to self.spawn_shell"""
 
         try:
             found_shell = shellingham.detect_shell()
@@ -172,6 +172,8 @@ class OwpmVenv:
             return ("source", ".csh")
         elif found_shell[0] == "fish":
             return ("source", ".fish")
+        
+        raise ExceptionBadOs(f"Your {found_shell[0]} shell is not supported by owpm!")
 
     def _get_terminal_size(self) -> tuple:
         """Gets the terminal size for current running. FIXME: this is currently
@@ -461,11 +463,11 @@ class Package:
 
         if required:  # API gives NoneType sometimes
             for subpackage in required:
-                subpkg_split = subpackage.split(" ")
+                subpkg_name = subpackage.split(";")[0].split(" ")[0]
 
                 # make new packages into parent [Project] using same is_dev as self
                 Package(
-                    self.parent_proj, subpkg_split[0], subpackage, self.is_dev, True
+                    self.parent_proj, subpkg_name, subpackage, self.is_dev, True
                 )
 
         return self.get_hash(resp)
