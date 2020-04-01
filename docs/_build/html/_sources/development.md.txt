@@ -20,6 +20,7 @@ Commenting is also allowed but try to keep them to a minimum and only use them i
 ## Maintainability notes
 
 - For breaking changes inside of the lockfile when developing, remember to bump the `OWPM_LOCKFILE_VERSION` constant so older versions of lockfiles don't work as a failsafe for old locks.
+- Should be refractored using `packaging` and Version/Requirement more instead of manually parsing in `get_subpackage` and others relating to lock.
 - Once the owpm.py file gets past ~1.5k lines it should proably start to be branched out and split up into other files with the CLI being a seperate module completely (but allowed to be in the same repository).
 - As good maintainability practise, always use type hints and a default value for optional arguments where it applies. This helps a developer using the main api of owpm simplify code.
 - Document *every* function, even if it is internal and won't show up on the main `sphinx` docs.
