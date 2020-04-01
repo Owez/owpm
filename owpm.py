@@ -172,7 +172,7 @@ class OwpmVenv:
             return ("source", ".csh")
         elif found_shell[0] == "fish":
             return ("source", ".fish")
-        
+
         raise ExceptionBadOs(f"Your {found_shell[0]} shell is not supported by owpm!")
 
     def _get_terminal_size(self) -> tuple:
@@ -438,9 +438,11 @@ class Package:
             self.parent_proj.lockfile_hash = ""  # ensure locks
 
     def __repr__(self):
-        if self.version_req == "*":
+        if (
+            self.version_req == "*" or not self.is_dep
+        ):  # latest version set/defined package
             repr_version = self.version_req
-        else:
+        else:  # if it is using pypi requirements
             version_split = self.version_req.split(" ;")[0].split(" ")
 
             if len(version_split) == 1:
@@ -466,9 +468,7 @@ class Package:
                 subpkg_name = subpackage.split(";")[0].split(" ")[0]
 
                 # make new packages into parent [Project] using same is_dev as self
-                Package(
-                    self.parent_proj, subpkg_name, subpackage, self.is_dev, True
-                )
+                Package(self.parent_proj, subpkg_name, subpackage, self.is_dev, True)
 
         return self.get_hash(resp)
 
@@ -506,9 +506,7 @@ class Package:
     def _nthread_lock_package(self, lock_path: Path):
         """Designed for a multi-threaded locking system to add a single package"""
 
-        print(
-            f"\tLocking {self}.."
-        )
+        print(f"\tLocking {self}..")
 
         conn, c = _new_lockfile_connection(lock_path)
 
@@ -676,9 +674,11 @@ def add(names, dev):
         package_info = package.split("==")
 
         if len(package_info) == 1:
-            package_info.append("*") # if no version is set, add latest
+            package_info.append("*")  # if no version is set, add latest
 
-        new_package = Package(proj, package_info[0], package_info[1], dev)  # TODO allow custom versions
+        new_package = Package(
+            proj, package_info[0], package_info[1], dev
+        )  # TODO allow custom versions
         print(f"\tAdded {new_package}!")
 
     proj.save_proj()
