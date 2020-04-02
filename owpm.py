@@ -636,7 +636,12 @@ def base_group():
 
 @click.command()
 @click.option("--name", help="Name of project", prompt="Name of your project")
-@click.option("--desc", help="Breif description", prompt="Breif description/overview")
+@click.option(
+    "--desc",
+    help="Breif description",
+    prompt="Breif description/overview",
+    default="No description",
+)
 @click.option("--ver", help="Base version of project (default 0.1.0)", default="0.1.0")
 def init(name, desc, ver):
     """Creates a new .owpm project file"""
