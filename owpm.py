@@ -20,11 +20,10 @@ from venv import EnvBuilder
 import click
 import pexpect
 import requests
+import shellingham
 import toml
 from packaging.requirements import Requirement
 from packaging.version import parse as pkg_parse
-
-import shellingham
 
 """The current source compatibility level, used for breaking changes to lockfile"""
 OWPM_LOCKFILE_VERSION = 1
@@ -291,6 +290,7 @@ class Project:
         for user to remember"""
 
         lock_path = Path(f"{self.name}.owpmlock")
+        old_lock = self.lockfile_hash
 
         self.lock_proj(force_lock)  # ensure project is locked
 
@@ -298,6 +298,17 @@ class Project:
 
         if venv_info:
             venv_path = VENV_PATH / venv_info["pin"]
+
+            if (
+                venv_info["lockfile_hash"] == old_lock
+            ):  # delete old venv that used to be new
+                old_venv = OwpmVenv(venv_info["pin"], True)
+                print(f"\tDeleting old {old_venv}..")
+
+                try:
+                    old_venv.delete()
+                except ExceptionVenvInactive:
+                    pass  # venv may have been manually deleted
 
             if not venv_path.exists():
                 _set_venv_status({})  # set a new dict as venv is corrupt
@@ -655,7 +666,7 @@ def init(name, desc, ver):
 
     if gitignore.exists():
         with open(gitignore, "a") as file:
-            file.write(f"\n# owpm lockfile\n{new_proj.name}.owpmlock\n")
+            file.write("\n# owpm lockfile\n*.owpmlock\n")
 
     print(f"Saved project as '{name}.owpm'!")
 
