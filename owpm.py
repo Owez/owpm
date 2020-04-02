@@ -31,8 +31,8 @@ OWPM_LOCKFILE_VERSION = 1
 
 BUF_SIZE = 65536  # lockfile_hash buffer size
 
-BASE_PATH = Path(os.path.dirname(os.path.abspath(sys.argv[0]))) # Path to owpm dir
-VENV_PATH = BASE_PATH / "owpm_venv" # Path for virtual machines
+BASE_PATH = Path(os.path.dirname(os.path.abspath(sys.argv[0])))  # Path to owpm dir
+VENV_PATH = BASE_PATH / "owpm_venv"  # Path for virtual machines
 
 
 class ExceptionApiDown(Exception):
@@ -646,6 +646,12 @@ def init(name, desc, ver):
     new_proj = Project(name, desc, ver)
     new_proj.save_proj()
 
+    gitignore = Path(".gitignore")
+
+    if gitignore.exists():
+        with open(gitignore, "a") as file:
+            file.write(f"\n# owpm lockfile\n{new_proj.name}.owpmlock\n")
+
     print(f"Saved project as '{name}.owpm'!")
 
 
@@ -674,9 +680,7 @@ def add(names, dev):
         if len(package_info) == 1:
             package_info.append("*")  # if no version is set, add latest
 
-        new_package = Package(
-            proj, package_info[0], package_info[1], dev
-        )
+        new_package = Package(proj, package_info[0], package_info[1], dev)
         print(f"\tAdded {new_package}!")
 
     proj.save_proj()
