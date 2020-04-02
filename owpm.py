@@ -31,10 +31,8 @@ OWPM_LOCKFILE_VERSION = 1
 
 BUF_SIZE = 65536  # lockfile_hash buffer size
 
-BASE_PATH = Path(os.path.dirname(os.path.abspath(sys.argv[0])))
-
-"""Path for virtual machines"""
-VENV_PATH = BASE_PATH / "owpm_venv"
+BASE_PATH = Path(os.path.dirname(os.path.abspath(sys.argv[0]))) # Path to owpm dir
+VENV_PATH = BASE_PATH / "owpm_venv" # Path for virtual machines
 
 
 class ExceptionApiDown(Exception):
@@ -678,7 +676,7 @@ def add(names, dev):
 
         new_package = Package(
             proj, package_info[0], package_info[1], dev
-        )  # TODO allow custom versions
+        )
         print(f"\tAdded {new_package}!")
 
     proj.save_proj()
