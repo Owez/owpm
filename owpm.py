@@ -662,11 +662,11 @@ def init(name, desc, ver):
     new_proj = Project(name, desc, ver)
     new_proj.save_proj()
 
-    # gitignore = Path(".gitignore")
+    gitignore = Path(".gitignore")
 
-    # if gitignore.exists():
-    #     with open(gitignore, "a") as file:
-    #         file.write("\n# owpm lockfile\n*.owpmlock\n")
+    if gitignore.exists():
+        with open(gitignore, "a") as file:
+            file.write("\n# owpm lockfile\n*.owpmlock\n")
 
     print(f"Saved project as '{name}.owpm'!")
 
