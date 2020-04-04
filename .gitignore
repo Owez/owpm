@@ -9,7 +9,6 @@ owpm.exe
 build/
 
 # owpm-specific
-*.owpmlock
 owpm_venv/
 owpm_venv.toml
 
