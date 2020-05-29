@@ -32,6 +32,7 @@ BUF_SIZE = 65536  # lockfile_hash buffer size
 
 BASE_PATH = Path(os.path.dirname(os.path.abspath(sys.argv[0])))  # Path to owpm dir
 VENV_PATH = BASE_PATH / "owpm_venv"  # Path for virtual machines
+TOML_PATH = BASE_PATH / "owpm_venv.toml"  # Path for toml cache
 
 
 class ExceptionApiDown(Exception):
@@ -76,6 +77,13 @@ class ExceptionOldLockfileSpec(Exception):
     pass
 
 
+class ExceptionVenvNotFound(Exception):
+    """When the given venv is not found, this should ususally result in a recoverable
+    circumstance"""
+
+    pass
+
+
 class OwpmVenv:
     """A built virtual enviroment created from a valid [Project]. If no venv_pin
     is given, it will generate a new one automatically"""
@@ -115,6 +123,9 @@ class OwpmVenv:
 
     def spawn_shell(self, args: list):
         """Creates an interactive shell and injects command base into"""
+
+        if not self.path.exists():
+            raise ExceptionVenvNotFound(f"{self} not found!")
 
         cmd, suffix = self._get_spawn_os()
 
@@ -290,7 +301,6 @@ class Project:
         for user to remember"""
 
         lock_path = Path(f"{self.name}.owpmlock")
-        old_lock = self.lockfile_hash
 
         self.lock_proj(force_lock)  # ensure project is locked
 
@@ -300,7 +310,7 @@ class Project:
             venv_path = VENV_PATH / venv_info["pin"]
 
             if (
-                venv_info["lockfile_hash"] == old_lock
+                venv_info["lockfile_hash"] != self.lockfile_hash
             ):  # delete old venv that used to be new
                 old_venv = OwpmVenv(venv_info["pin"], True)
                 print(f"\tDeleting old {old_venv}..")
@@ -623,17 +633,15 @@ def _pypi_req(package: str) -> requests.Response:
 def _set_venv_status(arg: dict):
     """Sets the current venv inside of owpm data dir like owpm_venv"""
 
-    with open(BASE_PATH / "owpm_venv.toml", "w+") as file:
+    with open(TOML_PATH, "w+") as file:
         toml.dump(arg, file)
 
 
 def _get_venv_status() -> dict:
     """Gets status of venv, if any are active"""
 
-    toml_path = BASE_PATH / "owpm_venv.toml"
-
-    if toml_path.exists():
-        with open(toml_path, "r") as file:
+    if TOML_PATH.exists():
+        with open(TOML_PATH, "r") as file:
             return toml.load(file)
     else:
         _set_venv_status({})
@@ -776,13 +784,12 @@ def lock(force):
 )
 @click.option(
     "--publish",
-    "-p",
     help="Makes build into a 'published' build with no development deps being used",
     is_flag=True,
     default=False,
 )
 @click.argument("args", nargs=-1)
-def run(pin, args, force, publish):
+def run(pin, force, publish, args):
     """Starts an interactive virtual enviroment or a temporary enviroment using
     args given. If a custom PIN is given, it won't use the current virtual
     enviroment cache"""
@@ -795,6 +802,10 @@ def run(pin, args, force, publish):
         venv = proj.build_proj(force, publish)
     else:
         venv = OwpmVenv(pin)
+
+        if not venv.path.exists():
+            print("\tGiven pin doesn't exist, creating new venv!")
+            venv = proj.build_proj(force, publish)
 
     print("Starting venv..")
 
@@ -837,31 +848,35 @@ def build(force, publish):
 @click.option(
     "--pin", "-p", help="Pin wanted for removal", prompt="Pin to remove", type=int
 )
-@click.option(
-    "--rem_all",
-    "-a",
-    help="Removes all virtual enviroments",
-    is_flag=True,
-    default=False,
-)
-def venv_rem(pin, rem_all):
+def venv_rem(pin, all):
     """Deletes specified venv pin"""
 
-    if rem_all:
-        if VENV_PATH.exists():
-            print("Removing all venvs..")
+    venv = OwpmVenv(pin, True)
 
-            shutil.rmtree(VENV_PATH)
+    print(f"Deleting {venv}..")
+    venv.delete()
+    print(f"Deleted {venv}!")
 
-            print("Removed all venvs!")
-        else:
-            print("No venvs to remove!")
+
+@click.command()
+def clean():
+    """Removes all virtual enviroments and cache to sort out any malfunctions"""
+
+    if VENV_PATH.exists():
+        print("Removing all venvs..")
+
+        shutil.rmtree(VENV_PATH)
+
+        print("Removed all venvs!")
     else:
-        venv = OwpmVenv(pin, True)
+        print("No venvs to remove!")
 
-        print(f"Deleting {venv}..")
-        venv.delete()
-        print(f"Deleted {venv}!")
+    if TOML_PATH.exists():
+        print("Removing cahce..")
+
+        os.remove(TOML_PATH)
+    else:
+        print("No cache to remove!")
 
 
 @click.command()
@@ -954,9 +969,10 @@ base_group.add_command(pkg_list)
 
 base_group.add_command(build)
 base_group.add_command(run)
+base_group.add_command(clean)
 
-base_group.add_command(venv_rem)
 base_group.add_command(venv_list)
+base_group.add_command(venv_rem)
 
 if __name__ == "__main__":
     base_group()
