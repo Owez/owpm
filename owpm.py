@@ -144,12 +144,26 @@ class OwpmVenv:
         shell.close()
         sys.exit(shell.exitstatus)
 
-    def check_venv_hashes(self, packages: list) -> bool:
-        """Checks a sqlite `SELECT * FROM locks` to locally installed hashes"""
+    def check_venv_hashes(self, c: sqlite3.Cursor) -> bool:
+        """Checks lockfile hashes to locally installed hashes"""
 
         print("Checking installed packages for corruption..")
 
-        pass  # TODO: make this work
+        cmd_out = str(subprocess.check_output(["pip", "list"])).split("\\n")[2:-1]
+
+        # for version_string in resp_json["releases"]:
+        #     parsed_version = pkg_parse(
+        #         version_string
+        #     )  # parse already-valid pypi into package.version.Version # TODO check versioning
+
+        for line in cmd_out:
+            raw_package = line.split()
+
+            found_packages = c.execute(
+                f"SELECT * FROM lock WHERE name='{raw_package[0]}'"
+            ).fetchall()
+
+            print(found_packages)  # TODO finish
 
     def _find_default_shell(self) -> str:
         """Returns the default shell if any, used when shellingham fails"""
@@ -364,9 +378,7 @@ class Project:
 
             subprocess.call(command_to_call, stdout=subprocess.DEVNULL)
 
-        venv.check_venv_hashes(
-            c.execute("SELECT * FROM lock").fetchall()
-        )  # check that hashes are in order
+        venv.check_venv_hashes(c)  # check that hashes are in order
 
         conn.close()
 
@@ -809,7 +821,10 @@ def run(pin, force, publish, args):
 
     print("Starting venv..")
 
-    venv.spawn_shell(" ".join(args))
+    conn, c = _new_lockfile_connection(Path(f"owpm.owpmlock"))
+    venv.check_venv_hashes(c)
+
+    # venv.spawn_shell(" ".join(args))
 
     print(f"Finished running {venv}!")
 
@@ -875,6 +890,8 @@ def clean():
         print("Removing cahce..")
 
         os.remove(TOML_PATH)
+
+        print("Removed cache!")
     else:
         print("No cache to remove!")
 
