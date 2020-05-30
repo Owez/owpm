@@ -88,6 +88,13 @@ class ExceptionVenvNotFound(Exception):
     pass
 
 
+class ExceptionCorruptPackage(Exception):
+    """When downloading a package, the package was corrupted and doesnt match the
+    hash previously downloaded"""
+
+    pass
+
+
 class OwpmVenv:
     """A built virtual enviroment created from a valid [Project]. If no venv_pin
     is given, it will generate a new one automatically"""
@@ -363,9 +370,12 @@ class Project:
                 "--require-hashes",
             ]
 
-            subprocess.call(command_to_call, stdout=subprocess.DEVNULL)
+            cmd_out = subprocess.call(command_to_call, stdout=subprocess.DEVNULL)
 
-        # venv.check_venv_hashes(c)  # check that hashes are in order
+            if cmd_out != 0: # TODO: This will accidently flag errors that are just installation errors
+                raise ExceptionCorruptPackage(
+                    f"Package that was installing is corrupt/tampered! Please ensure your using stable & reliable internet then try again shortly."
+                )
 
         conn.close()
 
@@ -395,6 +405,23 @@ class Project:
 
         self.lockfile_hash = ""  # ensure lock
         self.save_proj()
+
+    def remove_cached_venv(self):
+        """Removes a cached venv from the venv cache status if existant. Ensure
+        this is used before wiping any lockfile hashes as it requires one to
+        identify itself."""
+
+        # TODO: restructure venv cache to allow multiple enviroments at once
+
+        venv_status = _get_venv_status()
+
+        if len(venv_status) != 0 and venv_status["lockfile_hash"] == self.lockfile_hash:
+            print("Removing cached virtual enviroment..")
+
+            rem_venv = OwpmVenv(venv_status["pin"], True)
+            rem_venv.delete()
+
+            _set_venv_status({})
 
     def _compare_lock_hash(self, lock_path: Path) -> bool:
         """Compares self.lockfile_hash with a newly generated hash from the actual lockfile"""
@@ -684,12 +711,13 @@ def init(name, desc, ver):
 def add(names, dev):
     """Interactively adds a package to .owpm and saves .owpm"""
 
+    proj = first_project_indir()
+    proj.remove_cached_venv()
+
     if dev:
         print("Adding development package(s)..")
     else:
         print("Adding package(s)..")
-
-    proj = first_project_indir()
 
     for package in names:
         package_info = package.split("==")
@@ -719,6 +747,8 @@ def rem(names, dev):
     with differing versions"""
 
     proj = first_project_indir()
+    proj.remove_cached_venv()
+
     found = []
 
     if dev:
