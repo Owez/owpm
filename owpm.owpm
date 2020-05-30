@@ -1,6 +1,6 @@
 desc = "Simple python package manager"
 version = "0.1.0"
-lockfile_hash = "53c0395549911750b7cbf754bd12e22d"
+lockfile_hash = "989355c47fdf5204f0ecd6e327540793"
 python_version = "3.6.9"
 
 [packages]

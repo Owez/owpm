@@ -31,8 +31,12 @@ OWPM_LOCKFILE_VERSION = 1
 BUF_SIZE = 65536  # lockfile_hash buffer size
 
 BASE_PATH = Path(os.path.dirname(os.path.abspath(sys.argv[0])))  # Path to owpm dir
+
 VENV_PATH = BASE_PATH / "owpm_venv"  # Path for virtual machines
 TOML_PATH = BASE_PATH / "owpm_venv.toml"  # Path for toml cache
+TEMP_REQUIRE = (
+    BASE_PATH / "owpm_temp_require.txt"
+)  # Path for temporary requirements.txt
 
 
 class ExceptionApiDown(Exception):
@@ -143,27 +147,6 @@ class OwpmVenv:
         # on exit
         shell.close()
         sys.exit(shell.exitstatus)
-
-    def check_venv_hashes(self, c: sqlite3.Cursor) -> bool:
-        """Checks lockfile hashes to locally installed hashes"""
-
-        print("Checking installed packages for corruption..")
-
-        cmd_out = str(subprocess.check_output(["pip", "list"])).split("\\n")[2:-1]
-
-        # for version_string in resp_json["releases"]:
-        #     parsed_version = pkg_parse(
-        #         version_string
-        #     )  # parse already-valid pypi into package.version.Version # TODO check versioning
-
-        for line in cmd_out:
-            raw_package = line.split()
-
-            found_packages = c.execute(
-                f"SELECT * FROM lock WHERE name='{raw_package[0]}'"
-            ).fetchall()
-
-            print(found_packages)  # TODO finish
 
     def _find_default_shell(self) -> str:
         """Returns the default shell if any, used when shellingham fails"""
@@ -367,18 +350,22 @@ class Project:
         for non_dep in found_non_deps:
             print(f"\tInstalling '{non_dep[0]}':{non_dep[1]}..")
 
+            with open(TEMP_REQUIRE, "w+") as f_out:
+                f_out.write(f"{non_dep[0]} --hash=sha256:{non_dep[2]}\n")
+
             command_to_call = [
                 f"{venv.path}/bin/python",
                 "-m",
                 "pip",
                 "install",
-                "-I",
-                non_dep[0],
+                "-r",
+                TEMP_REQUIRE,
+                "--require-hashes",
             ]
 
             subprocess.call(command_to_call, stdout=subprocess.DEVNULL)
 
-        venv.check_venv_hashes(c)  # check that hashes are in order
+        # venv.check_venv_hashes(c)  # check that hashes are in order
 
         conn.close()
 
@@ -514,7 +501,7 @@ class Package:
                     f"Package {self} has been created too recently for pypi to compute!"
                 )
 
-            return resp_json["urls"][0]["md5_digest"]
+            return resp_json["urls"][0]["digests"]["sha256"]
 
         version_requires = Requirement(self.version_req)
 
@@ -528,7 +515,7 @@ class Package:
             # if parsed_version matches required
             if parsed_version in version_requires.specifier and len(content_body) > 0:
                 # TODO: make sure that release even has content, if not install version before
-                return content_body[0]["md5_digest"]
+                return content_body[0]["digests"]["sha256"]
 
         raise ExceptionVersionError(
             f"Package {self} with this specific version could not be found in pypi!"
@@ -819,12 +806,12 @@ def run(pin, force, publish, args):
             print("\tGiven pin doesn't exist, creating new venv!")
             venv = proj.build_proj(force, publish)
 
+    # conn, c = _new_lockfile_connection(Path(f"{proj.name}.owpmlock"))
+    # venv.check_venv_hashes(c)
+
     print("Starting venv..")
 
-    conn, c = _new_lockfile_connection(Path(f"owpm.owpmlock"))
-    venv.check_venv_hashes(c)
-
-    # venv.spawn_shell(" ".join(args))
+    venv.spawn_shell(" ".join(args))
 
     print(f"Finished running {venv}!")
 
@@ -881,8 +868,6 @@ def clean():
         print("Removing all venvs..")
 
         shutil.rmtree(VENV_PATH)
-
-        print("Removed all venvs!")
     else:
         print("No venvs to remove!")
 
@@ -890,8 +875,6 @@ def clean():
         print("Removing cahce..")
 
         os.remove(TOML_PATH)
-
-        print("Removed cache!")
     else:
         print("No cache to remove!")
 
