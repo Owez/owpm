@@ -171,7 +171,7 @@ class OwpmVenv:
         except:
             return ExceptionBadOs(f"Could not detect shell for your {os.name} system!")
 
-        if found_shell[0] == "bash":
+        if found_shell[0] in ("bash", "zsh"):
             return (".", "")
         elif found_shell[0] == "csh":
             return ("source", ".csh")
