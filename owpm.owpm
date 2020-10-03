@@ -1,6 +1,5 @@
 desc = "Simple python package manager"
 version = "0.1.0"
-lockfile_hash = "f7514ba7be12698fbf970e46d4f11580"
 
 [packages]
 toml = "*"
